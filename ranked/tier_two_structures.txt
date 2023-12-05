@@ -1,0 +1,17 @@
+BioCache
+Barracks_01
+HeavyVehicleFactory 01
+LightVehicleFactory_01
+QuantumCortex
+GreaterSpawningCyst
+Refinery_01
+Bunker_01
+Bunker_01_BoulderDamaged
+Bunker_02
+Bunker_03
+ConstructionSite_TurretHeavy
+TurretHeavy
+TurretMedium
+Bunker_04
+GrandSpawningCyst
+TurretAARocket

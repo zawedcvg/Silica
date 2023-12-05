@@ -1,0 +1,7 @@
+HiveSpire
+LesserSpawningCyst
+Node
+ThornSpire
+Outpost_01
+RadarStation_01
+Silo_01

@@ -1,0 +1,10 @@
+Crab
+Crab_Horned
+Impaler
+Shrimp
+Soldier_Rifleman
+Soldier_Scout
+Soldier_Heavy
+Soldier_Marksman
+LightQuad
+Wasp

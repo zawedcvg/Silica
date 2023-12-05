@@ -1,0 +1,14 @@
+Behemoth
+Hunter
+LightArmoredCar
+ArmedTransport
+HeavyArmoredCar
+TroopTransport
+HeavyQuad
+RocketLauncher
+PulseTank
+AirGunship
+AirFighter
+AirDropship
+Dragonfly
+Firebug

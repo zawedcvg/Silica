@@ -1,0 +1,11 @@
+Queen
+Scorpion
+Goliath
+BomberCraft
+HeavyHarvester
+HoverTank
+RailgunTank
+SiegeTank
+AirBomber
+Defiler
+Colossus
