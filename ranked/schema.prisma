@@ -10,94 +10,102 @@ datasource db {
 }
 
 model factions {
-    id                   Int                    @id @default(autoincrement())
-  name                 String                 @db.VarChar(45)
+  id      Int    @id
+  name    String @db.VarChar(45)
+  modes   modes? @relation(fields: [modesId], references: [id])
+  modesId Int?
 }
 
 model modes {
-  id                             Int                              @id @default(autoincrement())
-  name                           String                           @db.VarChar(45)
-  factions                       factions[]                       @relation(fields: [factions], references: [id])
+  id       Int        @id
+  name     String     @db.VarChar(45)
+  factions factions[]
 }
 
 model maps {
-  id        Int       @id @default(autoincrement())
-  name      String    @db.VarChar(45)
-  image_url String?   @db.VarChar(1000)
+  id        Int     @id
+  name      String  @db.VarChar(45)
+  image_url String? @db.VarChar(1000)
 }
 
 model matches {
-  id                               Int                                @id @default(autoincrement())
-  day_played                       String                             @db.VarChar(100)
-  match_length                     Int
-  screenshot                       String                             @db.VarChar(1000)
-  modes_id                         modes                              @relation(fields: [modes_id], references: [id])
-  maps_id                          maps                               @relation(fields: [maps_id], references: [id])
-  match_won                        factions                           @relation(fields: [match_won], references: [id])
-  submitted_by                     User                               @relation(fields: [submitted_by], references: [id])
+  id                   Int    @id @default(autoincrement())
+  day_played           String @db.VarChar(100)
+  match_length         Int
+  screenshot           String @db.VarChar(1000)
+  modes_id             Int
+  maps_id              Int
+  match_won_faction_id Int
+  user_id              Int
+  submitted_by         User   @relation(fields: [userId], references: [id])
+  userId               Int
 }
 
 model matches_players_fps {
-  player_id                        players                            @relation(fields: [player_id], references: [id])
-  match_id                         matches                            @relation(fields: [match_id], references: [id])
-  faction_id                       factions                           @relation(fields: [faction_id], references: [id])
+  player_id                       Int
+  match_id                        Int
+  faction_id                      Int
   //add damage/score details. could go with just total kills right now, though damage is a better metric. But no way to get damage against AI.
   // a bit of a non-trivial issue, as going with just kills equates killing collosus = killing wasp. Upto discussion
-  tier_one_kills                   Int
-  tier_two_kills                   Int
-  tier_three_kills                 Int
-  tier_one_structures_destroyed                   Int
-  tier_two_structures_destroyed                   Int
-  tier_three_structures_destroyed                 Int
-  total_points                                    Int
-  deaths                                          Int
-  @@id([matches_id, players_id, factions_id])
+  tier_one_kills                  Int
+  tier_two_kills                  Int
+  tier_three_kills                Int
+  tier_one_structures_destroyed   Int
+  tier_two_structures_destroyed   Int
+  tier_three_structures_destroyed Int
+  total_points                    Int
+  deaths                          Int
+
+  @@id([match_id, player_id, faction_id])
 }
 
 model matches_players_commander {
-  player_id                        players                                @relation(fields: [player_id], references: [id])
-  match_id                         matches                            @relation(fields: [match_id], references: [id])
-  faction_id                       factions                           @relation(fields: [faction_id], references: [id])
-  @@id([matches_id, players_id, factions_id])
+  player_id  Int
+  match_id   Int
+  faction_id Int
+
+  @@id([match_id, player_id, faction_id])
 }
 
 model rankings_commander {
-  player_id                        players                                @relation(fields: [player_id], references: [id])
-  faction_id                       factions                           @relation(fields: [faction_id], references: [id])
-  wins                             Int
-  ELO                              Int                                @default(1000) //whatever works
-  @@id([players_id, factions_id])
+  player_id  Int
+  faction_id Int
+  wins       Int
+  ELO        Int @default(1000) //whatever works
+
+  @@id([player_id, faction_id])
 }
 
 model rankings_fps {
-  player_id                                       players                            @relation(fields: [player_id], references: [id])
-  faction_id                                      factions                           @relation(fields: [faction_id], references: [id])
+  player_id                       Int
+  faction_id                      Int
   //add same damage criteria here.
-  tier_one_kills                                  Int
-  tier_two_kills                                  Int
-  tier_three_kills                                Int
-  tier_one_structures_destroyed                   Int
-  tier_two_structures_destroyed                   Int
-  tier_three_structures_destroyed                 Int
-  deaths                                          Int
-  total_points                                    Int
+  tier_one_kills                  Int
+  tier_two_kills                  Int
+  tier_three_kills                Int
+  tier_one_structures_destroyed   Int
+  tier_two_structures_destroyed   Int
+  tier_three_structures_destroyed Int
+  deaths                          Int
+  total_points                    Int
+
   @@id([player_id, faction_id])
 }
 
 model players {
-  id                               Int                                @id @default(autoincrement())
-  username                         String?                            @db.VarChar(100)
-  steam_id                         String                             @db.VarChar(100)
-  country                          String?                            @db.VarChar(100)
-  discord                          String                             @db.VarChar(100)
-  user                             User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       Int     @id @default(autoincrement())
+  username String? @db.VarChar(100)
+  steam_id String  @db.VarChar(100)
+  country  String? @db.VarChar(100)
+  discord  String  @db.VarChar(100)
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------
 model User {
-  id            String    @id @default(cuid())
+  id            Int       @id @default(autoincrement())
   name          String?
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  matches       matches[]
 }
