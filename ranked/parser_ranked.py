@@ -13,11 +13,7 @@ class Factions(Enum):
 
 class Modes(Enum):
     SOL_VS_ALIEN = "HUMANS_VS_ALIENS"
-    # CENTAURI_VS_ALIEN = 1
     CENTAURI_VS_SOL = "HUMANS_VS_HUMANS"
-    # CENTAURI_VS_CENTAURI = 3
-    # SOL_VS_SOL = 4
-    # ALIENS_VS_ALIEN = 5
     CENTAURI_VS_SOL_VS_ALIEN = "HUMANS_VS_HUMANS_VS_ALIENS" 
 
 class Player:
@@ -27,27 +23,62 @@ class Player:
         self.faction_type = faction_type
         #going to use both is not commander and 0 kills for checking if there is a fps side?
         self.is_commander = False
-        self.unit_kill = 0
-        self.structure_kill = 0
+        self.unit_kill = [0, 0, 0]
+        self.total_unit_kills = 0
+        # self.tier_one
+        self.total_structure_kills = 0
+        self.structure_kill = [0, 0, 0]
+        # self.tier_one_structure_kills = 
         self.death = 0
         #allocate method for points
         self.points = 0
         self.winner = False
 
     def update_structure_kill(self, structure):
-        self.structure_kill += 1
+        self.total_structure_kills += 1
+        if structure in tier_one_structures:
+            self.structure_kill[0] += 1
+            self.points += 10
+        elif structure in tier_two_structures:
+            self.structure_kill[1] += 1
+            self.points += 50
+        elif structure in tier_three_structures:
+            self.structure_kill[2] += 1
+            self.points += 100
+        else:
+            print(structure)
+            input()
+
     def update_unit_kill(self, unit):
-        self.unit_kill += 1
-    def update_death(self):
+        self.total_unit_kills += 1
+        if unit in tier_one_units:
+            self.unit_kill[0] += 1
+            self.points += 1
+        elif unit in tier_two_units:
+            self.unit_kill[1] += 1
+            self.points += 10
+        elif unit in tier_three_units:
+            self.unit_kill[2] += 1
+            self.points += 50
+        else:
+            print(unit)
+            input()
+        # if unit in tier_one:
+    def update_death(self, unit):
         self.death += 1
+        if unit in tier_one_units:
+            self.points -= 1
+        elif unit in tier_two_units:
+            self.points -= 10
+        elif unit in tier_three_units:
+            self.points -= 50
         #TODO subtract from points
     def set_commander(self):
         self.is_commander = True
     def is_fps(self):
-        return not self.is_commander
+        return not(self.unit_kill == 0 and self.structure_kill == 0 and self.death == 0 and self.is_commander)
     def did_win(self, winning_team: Factions):
         self.winner = (winning_team == self.faction_type)
-
     def __str__(self):
         return f"name: {self.player_name}, id: {self.player_id}, faction_type: {self.faction_type.value}, \
 unit_kills: {self.unit_kill}, structure_kill: {self.structure_kill}, deaths = {self.death} self.winner = {self.winner} is_commander = {self.is_commander}"
@@ -64,7 +95,21 @@ TEAM_CHAT = "say_team"
 ROUND_START = "World triggered \"Round_Start\""
 ROUND_END = "World triggered \"Round_Win\""
 END_TIME = ""
+START_TIME = ""
 
+with open("./tier_one_units.txt", "r") as fp:
+    tier_one_units = [i.strip() for i in fp.readlines()]
+with open("./tier_two_units.txt", "r") as fp:
+    tier_two_units = [i.strip() for i in fp.readlines()]
+with open("./tier_three_units.txt", "r") as fp:
+    tier_three_units = [i.strip() for i in fp.readlines()]
+
+with open("./tier_one_structures.txt", "r") as fp:
+    tier_one_structures = [i.strip() for i in fp.readlines()]
+with open("./tier_two_structures.txt", "r") as fp:
+    tier_two_structures = [i.strip() for i in fp.readlines()]
+with open("./tier_three_structures.txt", "r") as fp:
+    tier_three_structures = [i.strip() for i in fp.readlines()]
 
 def is_valid_faction_type(match_type: Modes, faction_type: Factions):
     if match_type == Modes.CENTAURI_VS_SOL:
@@ -78,7 +123,29 @@ def get_current_match(all_lines):
     inverted_list = all_lines[::-1]
     for i, value in enumerate(inverted_list):
         if value[25:54].strip() == ROUND_START:
+            global START_TIME
+            date_string = value[1:23].strip()
+            START_TIME = datetime.strptime(date_string, "%m-%d-%Y - %H:%M:%S")
             return all_lines[len(all_lines) - i - 1:]
+# def 
+def get_all_matches(all_lines):
+    # for i in all_lines:
+    start = []
+    end = []
+    for i, value in enumerate(all_lines):
+        if value[25:54].strip() == ROUND_START:
+            start.append(i)
+        elif value[25:52].strip() == ROUND_END:
+            end.append(i)
+
+    if start[0] > end[0]:
+        end.pop(0)
+        # print(True)
+
+    return list(zip(start, end))
+
+    # exit()
+
 
 def is_current_match_completed(match_info):
     for i in match_info[::-1]:
@@ -104,7 +171,7 @@ def get_match_type(match_details):
         factions = [Factions.SOL, Factions.CENTAURI, Factions.ALIEN]
     elif game_mode == Modes.SOL_VS_ALIEN:
         factions = [Factions.SOL, Factions.ALIEN]
-    return game_mode, factions
+    return game_mode, factions, (END_TIME - START_TIME).total_seconds()
 
 def get_commanders(match_log_info, match_mode_info, all_players):
     #TODO complete the implementation once logging bug is fixed
@@ -207,7 +274,7 @@ def process_structure_kills(all_match_info, all_players):
 
 def process_unit_kills(all_match_info, all_players):
     unit_kill_info = filter(lambda x: KILLED in x.split(" "), all_match_info)
-    unit_kill_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)"'
+    unit_kill_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)'
     # for i in
     for i in unit_kill_info:
         match = re.search(unit_kill_pattern, i.strip())
@@ -218,10 +285,13 @@ def process_unit_kills(all_match_info, all_players):
             enemy_name = match.group(5)
             enemy_id = match.group(7)
             enemy_faction = match.group(8)
+            victim = match.group(11)
+            # print(victim)
+            # input()
             if enemy_id != "":
-                all_players[(int(enemy_id), Factions(enemy_faction))].update_death()
+                all_players[(int(enemy_id), Factions(enemy_faction))].update_death(victim)
             if player_id != "":
-                all_players[(int(player_id), Factions(player_faction))].update_unit_kill(enemy_name)#change/fix this
+                all_players[(int(player_id), Factions(player_faction))].update_unit_kill(victim)#change/fix this for friendly kills?
 
 def probability(rating1, rating2):
     return 1.0 * 1.0 / (1 + 1.0 * math.pow(10, 1.0 * (rating1 - rating2) / 400))
@@ -258,11 +328,20 @@ def elo_rating_commander(Ra, Rb, K, d):
 
 #reading the file
 #TODO add flag to parse the entire log as for testing/some purpose
-
-def checking(file_name):
+def checking_all(file_name):
     file_pointer = open(file_name, "r")
     all_lines = file_pointer.readlines()
-    match_log_info = get_current_match(all_lines)
+    # match_log_info = get_current_match(all_lines)
+    match_log_info = get_all_matches(all_lines)
+    print(match_log_info)
+
+
+    for start, end in match_log_info:
+        the_match_lines = all_lines[start:end + 1]
+        # print(the_match_lines[-1])
+        # print(the_match_lines)
+        exit()
+
     is_complete = is_current_match_completed(match_log_info)
     if not is_complete:
         print("Aborting parsing, last match has incomplete information")
@@ -277,8 +356,34 @@ def checking(file_name):
     for i in all_players.values():
         print(i)
 
+def checking(file_name):
+    file_pointer = open(file_name, "r")
+    all_lines = file_pointer.readlines()
+    match_log_info = get_current_match(all_lines)
+    # match_log_info = get_all_matches(all_lines)
+
+
+    # for start, end in match_log_info:
+        # the_match_lines = all_lines[start:end + 1]
+        # # print(the_match_lines[-1])
+        # # print(the_match_lines)
+        # exit()
+
+    is_complete = is_current_match_completed(match_log_info)
+    match_type_info = (get_match_type(match_log_info))
+    if not is_complete:
+        print("Aborting parsing, last match has incomplete information")
+        exit()
+    all_essential_info = list(filter(remove_chat_messages, match_log_info))
+    winning_team = get_winning_team(all_essential_info)
+    all_essential_info = [remove_date_data(line) for line in all_essential_info]
+    all_players = get_all_players(all_essential_info, winning_team)
+    process_structure_kills(all_essential_info, all_players)
+    process_unit_kills(all_essential_info, all_players)
+    get_commanders(match_log_info, None, all_players)
+    # for i in all_players.values():
+        # print(i)
+    return match_type_info, winning_team, all_players
+
 if __name__ == "__main__":
     checking(sys.argv[1])
-
-# checking()
-# cProfile.run('checking()')

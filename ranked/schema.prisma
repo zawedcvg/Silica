@@ -29,16 +29,15 @@ model maps {
 }
 
 model matches {
-  id                   Int    @id @default(autoincrement())
-  day_played           String @db.VarChar(100)
+  id                   Int      @id @default(autoincrement())
+  day_played           DateTime @default(now())
   match_length         Int
-  screenshot           String @db.VarChar(1000)
+  screenshot           String?  @db.VarChar(1000)
   modes_id             Int
   maps_id              Int
   match_won_faction_id Int
-  user_id              Int
-  submitted_by         User   @relation(fields: [userId], references: [id])
-  userId               Int
+  submitted_by         User?    @relation(fields: [userId], references: [id])
+  userId               Int?
 }
 
 model matches_players_fps {
@@ -95,9 +94,9 @@ model rankings_fps {
 model players {
   id       Int     @id @default(autoincrement())
   username String? @db.VarChar(100)
-  steam_id String  @db.VarChar(100)
+  steam_id BigInt  @unique
   country  String? @db.VarChar(100)
-  discord  String  @db.VarChar(100)
+  discord  String?  @db.VarChar(100)
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------
