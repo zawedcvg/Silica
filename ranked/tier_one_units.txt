@@ -8,3 +8,4 @@ Soldier_Heavy
 Soldier_Marksman
 LightQuad
 Wasp
+HoverBike

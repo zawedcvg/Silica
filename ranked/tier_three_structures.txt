@@ -1,7 +1,7 @@
-ResearchFacility_01
+ResearchFacility
 Nest
-UltraHeavyVehicleFactory_01
-Headquarters_01
+UltraHeavyVehicleFactory
+Headquarters
 GrandSpawningCyst
 ColossalSpawningCyst
-AirFactory 01
+AirFactory

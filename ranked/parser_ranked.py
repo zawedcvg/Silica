@@ -7,8 +7,8 @@ from datetime import datetime
 import re
 
 class Factions(Enum):
-    SOL = "Human (Sol)"
-    CENTAURI = "Human (Centauri)"
+    SOL = "Sol"
+    CENTAURI = "Centauri"
     ALIEN = "Alien"
 
 class Modes(Enum):
@@ -81,7 +81,7 @@ class Player:
         self.winner = (winning_team == self.faction_type)
     def __str__(self):
         return f"name: {self.player_name}, id: {self.player_id}, faction_type: {self.faction_type.value}, \
-unit_kills: {self.unit_kill}, structure_kill: {self.structure_kill}, deaths = {self.death} self.winner = {self.winner} is_commander = {self.is_commander}"
+unit_kills: {self.unit_kill}, structure_kill: {self.structure_kill}, deaths = {self.death} self.winner = {self.winner} is_commander = {self.is_commander} points= {self.points}"
 
 #TODO
 #to get thing, just to Factions(name).name?
@@ -119,13 +119,33 @@ def is_valid_faction_type(match_type: Modes, faction_type: Factions):
     elif match_type == Modes.CENTAURI_VS_SOL_VS_ALIEN:
         return True
 
+def create_new_player(all_players, match_info, player_id, player_faction, player_name):
+    # player_name = match.group(1)
+    # player_id = int(match.group(3))
+    # player_faction = match.group(5)
+    player_id = int(player_id)
+    new_player = Player(player_id, player_name, Factions(player_faction))
+    winning_team = get_winning_team(match_info)
+    new_player.did_win(winning_team)
+    print("here")
+    all_players[(player_id, Factions(player_faction))] = new_player
+    print(all_players[(player_id, Factions(player_faction))])
+
+def get_match_start(all_lines):
+    for i, value in enumerate(all_lines):
+        if value[25:54].strip() == ROUND_START:
+            global START_TIME
+            date_string = value[1:23].strip()
+            print(date_string)
+            START_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
+
 def get_current_match(all_lines):
     inverted_list = all_lines[::-1]
     for i, value in enumerate(inverted_list):
         if value[25:54].strip() == ROUND_START:
             global START_TIME
             date_string = value[1:23].strip()
-            START_TIME = datetime.strptime(date_string, "%m-%d-%Y - %H:%M:%S")
+            START_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             return all_lines[len(all_lines) - i - 1:]
 # def 
 def get_all_matches(all_lines):
@@ -152,7 +172,7 @@ def is_current_match_completed(match_info):
         if i[25:52].strip() == ROUND_END:
             date_string = i[1:23].strip()
             global END_TIME
-            END_TIME = datetime.strptime(date_string, "%m-%d-%Y - %H:%M:%S")
+            END_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             return True
     return False
 
@@ -188,9 +208,12 @@ def get_commanders(match_log_info, match_mode_info, all_players):
         left_match = re.search(commander_left_pattern, i)
         if joined_match:
             date_string = i[1:23].strip()
-            start_time = datetime.strptime(date_string, "%m-%d-%Y - %H:%M:%S")
+            start_time = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             commander = int(joined_match.group(3))
             faction_type = Factions(joined_match.group(4))
+            if (commander, faction_type) not in all_players:
+                create_new_player(all_players, match_log_info, commander, joined_match.group(4), joined_match.group(1))
+
             player = all_players[(commander, faction_type)]
             #all_commanders is the all the factions and all the commanders they have had
             all_commanders[faction_type].append(player)
@@ -199,11 +222,13 @@ def get_commanders(match_log_info, match_mode_info, all_players):
         elif left_match:
             commander = int(left_match.group(3))
             faction_type = Factions(left_match.group(4))
+            if (commander, faction_type) not in all_players:
+                create_new_player(all_players, match_log_info, commander, left_match.group(4), left_match.group(1))
             player = all_players[(commander, faction_type)]
             if player not in all_commanders[faction_type]:
                 continue
             date_string = i[1:23].strip()
-            end_time = datetime.strptime(date_string, "%m-%d-%Y - %H:%M:%S")
+            end_time = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             commander_durations[player].append(end_time)
     for duration in commander_durations.values():
         if len(duration) % 2 != 0:
@@ -222,6 +247,7 @@ def get_commanders(match_log_info, match_mode_info, all_players):
         final_commander[faction] = faction_commander
 
         faction_commander.set_commander()
+    return final_commander
 
 def remove_chat_messages(line):
     words = line.split(" ")
@@ -259,6 +285,8 @@ def get_all_players(all_req, winning_team):
             new_player = Player(player_id, player_name, Factions(player_faction))
             new_player.did_win(winning_team)
             all_players[(player_id, Factions(player_faction))] = new_player
+        # for in in all_req:
+
     return all_players
 
 def process_structure_kills(all_match_info, all_players):
@@ -267,10 +295,14 @@ def process_structure_kills(all_match_info, all_players):
     for i in structure_kill_info:
         match = re.search(structure_killed_pattern, i.strip())
         if match:
+            player_name = match.group(1)
             player_id = int(match.group(3))
             player_faction = match.group(4)
             structure = match.group(5)
-            all_players[(player_id, Factions(player_faction))].update_structure_kill(structure)
+            if player_id != "":
+                if (int(player_id), Factions(player_faction)) not in all_players:
+                    create_new_player(all_players, all_match_info, player_id, player_faction, player_name)
+                all_players[(player_id, Factions(player_faction))].update_structure_kill(structure)
 
 def process_unit_kills(all_match_info, all_players):
     unit_kill_info = filter(lambda x: KILLED in x.split(" "), all_match_info)
@@ -279,6 +311,7 @@ def process_unit_kills(all_match_info, all_players):
     for i in unit_kill_info:
         match = re.search(unit_kill_pattern, i.strip())
         if match:
+            player_name = match.group(1)
             player_id = (match.group(3))
             #TODO add victim things
             player_faction = match.group(4)
@@ -286,45 +319,63 @@ def process_unit_kills(all_match_info, all_players):
             enemy_id = match.group(7)
             enemy_faction = match.group(8)
             victim = match.group(11)
-            # print(victim)
-            # input()
             if enemy_id != "":
+                if (int(enemy_id), Factions(enemy_faction)) not in all_players:
+                    create_new_player(all_players, all_match_info, enemy_id, enemy_faction, enemy_name)
                 all_players[(int(enemy_id), Factions(enemy_faction))].update_death(victim)
             if player_id != "":
+                print((int(player_id), Factions(player_faction)) not in all_players)
+                if (int(player_id), Factions(player_faction)) not in all_players:
+                    create_new_player(all_players, all_match_info, player_id, player_faction, player_name)
+                print((int(player_id), Factions(player_faction)) not in all_players)
+                # print()
                 all_players[(int(player_id), Factions(player_faction))].update_unit_kill(victim)#change/fix this for friendly kills?
 
 def probability(rating1, rating2):
     return 1.0 * 1.0 / (1 + 1.0 * math.pow(10, 1.0 * (rating1 - rating2) / 400))
 
-def elo_rating_fps(Ra, Rb, K, d):
-    #TODO
-    #calculate based on points. use maybe an exponential thing?
-    pass
-
 #https://www.geeksforgeeks.org/elo-rating-algorithm/
-def elo_rating_commander(Ra, Rb, K, d):
+def elo_rating_commander(elo_list, win_list, K=30):
     # To calculate the Winning
     # Probability of Player B
-    Pb = probability(Ra, Rb)
+    if len(elo_list) == 2:
+        Ra, Rb = elo_list
+        Pb = probability(Ra, Rb)
 
-    # To calculate the Winning
-    # Probability of Player A
-    Pa = probability(Rb, Ra)
+        # To calculate the Winning
+        # Probability of Player A
+        Pa = probability(Rb, Ra)
 
-    # Case -1 When Player A wins
-    # Updating the Elo Ratings
-    if (d == 1):
-        Ra = Ra + K * (1 - Pa)
-        Rb = Rb + K * (0 - Pb)
+        # Case -1 When Player A wins
+        # Updating the Elo Ratings
+        if (win_list[0]):
+            Ra = Ra + K * (1 - Pa)
+            Rb = Rb + K * (0 - Pb)
 
-    # Case -2 When Player B wins
-    # Updating the Elo Ratings
+        # Case -2 When Player B wins
+        # Updating the Elo Ratings
+        else:
+            Ra = Ra + K * (0 - Pa)
+            Rb = Rb + K * (1 - Pb)
+
+        print("Updated Ratings:-")
+        print("Ra =", round(Ra, 6), " Rb =", round(Rb, 6))
+        return int(Ra), int(Rb)
     else:
-        Ra = Ra + K * (0 - Pa)
-        Rb = Rb + K * (1 - Pb)
+        Ra, Rb, Rc = elo_list
+        P = []
+        P.append(probability(Ra, Rb) + probability(Ra, Rc))
+        P.append(probability(Rb, Ra) + probability(Rb, Rc))
+        P.append(probability(Rc, Ra) + probability(Rc, Rb))
 
-    print("Updated Ratings:-")
-    print("Ra =", round(Ra, 6), " Rb =", round(Rb, 6))
+        R = []
+        for p, w, r in zip(P, win_list, elo_list):
+            thing = 1 if w else 0
+            new_R = r + K * 2 * (thing - p/6)
+            R.append(int(new_R))
+        # Ra = Ra + Pa * ()
+        return R
+
 
 #reading the file
 #TODO add flag to parse the entire log as for testing/some purpose
@@ -334,15 +385,23 @@ def checking_all(file_name):
     # match_log_info = get_current_match(all_lines)
     match_log_info = get_all_matches(all_lines)
     print(match_log_info)
+    all_parse_info = []
 
 
     for start, end in match_log_info:
         the_match_lines = all_lines[start:end + 1]
-        # print(the_match_lines[-1])
-        # print(the_match_lines)
-        exit()
+        all_parse_info.append(parse_info(the_match_lines))
 
+    return all_parse_info
+
+def parse_info(match_log_info):
+    # print(match_log_info)
+    # input()
+    get_match_start(match_log_info)
+    global START_TIME
+    print(START_TIME)
     is_complete = is_current_match_completed(match_log_info)
+    match_type_info = (get_match_type(match_log_info))
     if not is_complete:
         print("Aborting parsing, last match has incomplete information")
         exit()
@@ -352,9 +411,13 @@ def checking_all(file_name):
     all_players = get_all_players(all_essential_info, winning_team)
     process_structure_kills(all_essential_info, all_players)
     process_unit_kills(all_essential_info, all_players)
-    get_commanders(match_log_info, None, all_players)
+    final_commanders = get_commanders(match_log_info, None, all_players)
     for i in all_players.values():
         print(i)
+    # input()
+    return match_type_info, winning_team, all_players, final_commanders
+
+
 
 def checking(file_name):
     file_pointer = open(file_name, "r")
@@ -386,4 +449,4 @@ def checking(file_name):
     return match_type_info, winning_team, all_players
 
 if __name__ == "__main__":
-    checking(sys.argv[1])
+    checking_all(sys.argv[1])

@@ -76,17 +76,11 @@ model rankings_commander {
 }
 
 model rankings_fps {
-  player_id                       Int
-  faction_id                      Int
+  player_id  Int
+  faction_id Int
   //add same damage criteria here.
-  tier_one_kills                  Int
-  tier_two_kills                  Int
-  tier_three_kills                Int
-  tier_one_structures_destroyed   Int
-  tier_two_structures_destroyed   Int
-  tier_three_structures_destroyed Int
-  deaths                          Int
-  total_points                    Int
+  ELO        Int
+  wins       Int
 
   @@id([player_id, faction_id])
 }
@@ -96,7 +90,7 @@ model players {
   username String? @db.VarChar(100)
   steam_id BigInt  @unique
   country  String? @db.VarChar(100)
-  discord  String?  @db.VarChar(100)
+  discord  String? @db.VarChar(100)
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------
