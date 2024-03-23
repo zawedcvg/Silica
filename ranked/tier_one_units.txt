@@ -9,3 +9,4 @@ Soldier_Marksman
 LightQuad
 Wasp
 HoverBike
+Worm
