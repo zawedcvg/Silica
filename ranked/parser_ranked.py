@@ -10,6 +10,7 @@ class Factions(Enum):
     SOL = "Sol"
     CENTAURI = "Centauri"
     ALIEN = "Alien"
+    WILDLIFE = "Wildlife"
 
 class Modes(Enum):
     SOL_VS_ALIEN = "HUMANS_VS_ALIENS"
@@ -300,6 +301,9 @@ def process_structure_kills(all_match_info, all_players):
             player_faction = match.group(4)
             structure = match.group(5)
             if player_id != "":
+                # if Factions(plaue)
+                if Factions(player_faction) == Factions.WILDLIFE:
+                    continue
                 if (int(player_id), Factions(player_faction)) not in all_players:
                     create_new_player(all_players, all_match_info, player_id, player_faction, player_name)
                 all_players[(player_id, Factions(player_faction))].update_structure_kill(structure)
@@ -320,14 +324,15 @@ def process_unit_kills(all_match_info, all_players):
             enemy_faction = match.group(8)
             victim = match.group(11)
             if enemy_id != "":
-                if (int(enemy_id), Factions(enemy_faction)) not in all_players:
-                    create_new_player(all_players, all_match_info, enemy_id, enemy_faction, enemy_name)
-                all_players[(int(enemy_id), Factions(enemy_faction))].update_death(victim)
+                if Factions(enemy_faction) != Factions.WILDLIFE:
+                    if (int(enemy_id), Factions(enemy_faction)) not in all_players:
+                        create_new_player(all_players, all_match_info, enemy_id, enemy_faction, enemy_name)
+                    all_players[(int(enemy_id), Factions(enemy_faction))].update_death(victim)
             if player_id != "":
-                print((int(player_id), Factions(player_faction)) not in all_players)
+                if Factions(player_faction) == Factions.WILDLIFE:
+                    continue
                 if (int(player_id), Factions(player_faction)) not in all_players:
                     create_new_player(all_players, all_match_info, player_id, player_faction, player_name)
-                print((int(player_id), Factions(player_faction)) not in all_players)
                 # print()
                 all_players[(int(player_id), Factions(player_faction))].update_unit_kill(victim)#change/fix this for friendly kills?
 
@@ -424,14 +429,6 @@ def checking(file_name):
     all_lines = file_pointer.readlines()
     match_log_info = get_current_match(all_lines)
     # match_log_info = get_all_matches(all_lines)
-
-
-    # for start, end in match_log_info:
-        # the_match_lines = all_lines[start:end + 1]
-        # # print(the_match_lines[-1])
-        # # print(the_match_lines)
-        # exit()
-
     is_complete = is_current_match_completed(match_log_info)
     match_type_info = (get_match_type(match_log_info))
     if not is_complete:
