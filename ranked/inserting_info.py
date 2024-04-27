@@ -3,8 +3,11 @@ import sys
 from prisma import Prisma
 from parser_ranked import checking, checking_all, elo_rating_commander
 
+from dotenv import load_dotenv
+
+load_dotenv(r"C:\Program Files (x86)\Steam\steamapps\common\Silica\UserData\.env")
+
 modes_id = {"HUMANS_VS_ALIENS": 0, "HUMANS_VS_HUMANS": 1, "HUMANS_VS_HUMANS_VS_ALIENS": 2}
-# factions_id = {"Alien": 0, "Centauri": 1, "Sol": 2, "Wildlife": 3}
 factions_id = {"Alien": 0, "Centauri": 1, "Sol": 2, "Wildlife": 3}
 
 def get_fps_data(player, player_id, match_id):
@@ -25,7 +28,7 @@ def get_fps_data(player, player_id, match_id):
         }
     return to_insert
 
-async def main(match_type_info, winning_team, all_players, final_commanders) -> None:
+async def main(match_type_info, winning_team, all_players) -> None:
     prisma = Prisma()
     await prisma.connect()
     # elo = elo_rating_commander()
@@ -34,11 +37,6 @@ async def main(match_type_info, winning_team, all_players, final_commanders) -> 
     winning_team_faction_id = factions_id[winning_team.value]
     mode_id = modes_id[mode.value]
 
-    # await prisma.matches.delete_many()
-    # await prisma.matches_players_commander.delete_many()
-    # await prisma.matches_players_fps.delete_many()
-    # await prisma.rankings_commander.delete_many()
-    # exit()
 
     match_info = await prisma.matches.create(
         data={
@@ -66,11 +64,9 @@ async def main(match_type_info, winning_team, all_players, final_commanders) -> 
     already_added_steam_ids = {}
 
     all_outputs = await asyncio.gather(*tasks)
-    print("done waiting")
     for output, player in zip(all_outputs, all_players.items()):
         player_info, player_object = player
         steam_id, _ = player_info
-        print(output)
         if output is None and steam_id not in already_added_steam_ids:
             insertion = await prisma.players.create(data={
                 'username': player_object.player_name,
@@ -106,7 +102,6 @@ async def main(match_type_info, winning_team, all_players, final_commanders) -> 
     elos = []
 
     for output, player in zip(all_commanders_result, player_commander_info):
-        print(player)
         if output is None:
             insertion = await prisma.rankings_commander.create(data={
                 'player_id': player['player_id'],
@@ -118,12 +113,9 @@ async def main(match_type_info, winning_team, all_players, final_commanders) -> 
         else:
             elos.append(output.ELO)
 
-    print(elos)
     all_faction_ids = [player['faction_id'] for player in player_commander_info]
     win_list = [faction_id == winning_team_faction_id for faction_id in all_faction_ids]
     new_elos = elo_rating_commander(elos, win_list)
-    print(new_elos)
-    # input()
 
     elos_commander_updates = []
     for player, new_elo in zip(player_commander_info, new_elos):
@@ -133,56 +125,17 @@ async def main(match_type_info, winning_team, all_players, final_commanders) -> 
         elos_commander_updates.append(update)
     await asyncio.gather(*elos_commander_updates)
 
-
-
-    # for player, elo in zip(player_commander_info, elos):
-
-        # pass
-
-
-
-
-
-
-    # await prisma.factions.create(
-        # data={
-            # 'name': 'Centauri',
-            # 'id': 1,
-        # },
-    # )
-
-    # await prisma.factions.create(
-        # data={
-            # 'name': 'Sol',
-            # 'id': 2,
-        # },
-    # )
-
-    # await prisma.factions.create(
-        # data={
-            # 'name': 'Wildlife',
-            # 'id': 3,
-        # },
-    # )
-
-   # # //prisma.factions. 
-    # # print(faction)
-    # # factions = await prisma.factions.find_many()
-    # # print(factions)
-    # await prisma.factions.delete_many(where={'name': 'Aliens'})
-
     await prisma.disconnect()
 
 if __name__ == '__main__':
-    all_parse_info = checking_all(sys.argv[1])
-    for match_type_info, winning_team, all_players, final_commanders in all_parse_info:
-    # match_type_info, winning_team, all_players = checking(sys.argv[1])
-    # print(match_type_info)
+    sys.stdout = open('parser_stdout.log', 'w')
+    sys.stderr = open('parser_stderr.txt', 'w')
+    all_parse_info = checking(sys.argv[1])
+    all_parse_info = [all_parse_info]
+    for match_type_info, winning_team, all_players in all_parse_info:
         mode, _, duration = match_type_info
 
-        print(modes_id[mode.value])
-        print(factions_id[winning_team.value])
-        for i in all_players.items():
-            print(i)
-        asyncio.run(main(match_type_info, winning_team, all_players, final_commanders))
+        asyncio.run(main(match_type_info, winning_team, all_players))
         print("done with first")
+    sys.stdout.close()
+    sys.stderr.close()

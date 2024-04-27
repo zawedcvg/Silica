@@ -48,7 +48,7 @@ class Player:
             self.points += 100
         else:
             print(structure)
-            input()
+            # # input()
 
     def update_unit_kill(self, unit):
         self.total_unit_kills += 1
@@ -63,7 +63,7 @@ class Player:
             self.points += 50
         else:
             print(unit)
-            input()
+            # input()
         # if unit in tier_one:
     def update_death(self, unit):
         self.death += 1
@@ -343,6 +343,33 @@ def probability(rating1, rating2):
 def elo_rating_commander(elo_list, win_list, K=30):
     # To calculate the Winning
     # Probability of Player B
+    if len(elo_list) == 0:
+        return []
+    if len(elo_list) == 1:
+        Ra = elo_list[0]
+        Rb = 1000
+        Pb = probability(Ra, Rb)
+
+        # To calculate the Winning
+        # Probability of Player A
+        Pa = probability(Rb, Ra)
+
+        # Case -1 When Player A wins
+        # Updating the Elo Ratings
+        if (win_list[0]):
+            Ra = Ra + K * (1 - Pa)
+            Rb = Rb + K * (0 - Pb)
+
+        # Case -2 When Player B wins
+        # Updating the Elo Ratings
+        else:
+            Ra = Ra + K * (0 - Pa)
+            Rb = Rb + K * (1 - Pb)
+
+        print("Updated Ratings:-")
+        print("Ra =", round(Ra, 6))
+        return [int(Ra)]
+
     if len(elo_list) == 2:
         Ra, Rb = elo_list
         Pb = probability(Ra, Rb)
@@ -416,11 +443,12 @@ def parse_info(match_log_info):
     all_players = get_all_players(all_essential_info, winning_team)
     process_structure_kills(all_essential_info, all_players)
     process_unit_kills(all_essential_info, all_players)
-    final_commanders = get_commanders(match_log_info, None, all_players)
+    _ = get_commanders(match_log_info, None, all_players)
+    print("all_players")
     for i in all_players.values():
         print(i)
     # input()
-    return match_type_info, winning_team, all_players, final_commanders
+    return match_type_info, winning_team, all_players
 
 
 
@@ -428,22 +456,7 @@ def checking(file_name):
     file_pointer = open(file_name, "r")
     all_lines = file_pointer.readlines()
     match_log_info = get_current_match(all_lines)
-    # match_log_info = get_all_matches(all_lines)
-    is_complete = is_current_match_completed(match_log_info)
-    match_type_info = (get_match_type(match_log_info))
-    if not is_complete:
-        print("Aborting parsing, last match has incomplete information")
-        exit()
-    all_essential_info = list(filter(remove_chat_messages, match_log_info))
-    winning_team = get_winning_team(all_essential_info)
-    all_essential_info = [remove_date_data(line) for line in all_essential_info]
-    all_players = get_all_players(all_essential_info, winning_team)
-    process_structure_kills(all_essential_info, all_players)
-    process_unit_kills(all_essential_info, all_players)
-    get_commanders(match_log_info, None, all_players)
-    # for i in all_players.values():
-        # print(i)
-    return match_type_info, winning_team, all_players
+    return parse_info(match_log_info)
 
 if __name__ == "__main__":
     checking_all(sys.argv[1])
