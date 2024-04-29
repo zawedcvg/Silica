@@ -31,12 +31,17 @@ def get_fps_data(player, player_id, match_id):
 async def main(match_type_info, winning_team, all_players) -> None:
     prisma = Prisma()
     await prisma.connect()
-    # elo = elo_rating_commander()
-    # print(prisma)
+
     mode, _, duration = match_type_info
     winning_team_faction_id = factions_id[winning_team.value]
     mode_id = modes_id[mode.value]
 
+    #dont remove, this is for clearing the database
+    # await prisma.matches.delete_many()
+    # await prisma.matches_players_commander.delete_many()
+    # await prisma.matches_players_fps.delete_many()
+    # await prisma.rankings_commander.delete_many()
+    # exit()
 
     match_info = await prisma.matches.create(
         data={
@@ -46,6 +51,7 @@ async def main(match_type_info, winning_team, all_players) -> None:
             'match_won_faction_id': winning_team_faction_id,
         },
     )
+
 
     match_id = match_info.id
     tasks = []
@@ -134,8 +140,6 @@ if __name__ == '__main__':
     all_parse_info = [all_parse_info]
     for match_type_info, winning_team, all_players in all_parse_info:
         mode, _, duration = match_type_info
-
         asyncio.run(main(match_type_info, winning_team, all_players))
-        print("done with first")
     sys.stdout.close()
     sys.stderr.close()

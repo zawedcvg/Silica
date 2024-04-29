@@ -48,7 +48,6 @@ class Player:
             self.points += 100
         else:
             print(structure)
-            # # input()
 
     def update_unit_kill(self, unit):
         self.total_unit_kills += 1
@@ -63,7 +62,6 @@ class Player:
             self.points += 50
         else:
             print(unit)
-            # input()
         # if unit in tier_one:
     def update_death(self, unit):
         self.death += 1
@@ -148,6 +146,23 @@ def get_current_match(all_lines):
             date_string = value[1:23].strip()
             START_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             return all_lines[len(all_lines) - i - 1:]
+
+def get_latest_complete_match(all_lines):
+    inverted_list = all_lines[::-1]
+    did_find_world_win = False
+    end_index = None
+    for i, value in enumerate(inverted_list):
+        # print(value[25:82])
+        if value[25:52].strip() == ROUND_END:
+            did_find_world_win = True
+            end_index = len(all_lines) - i
+        elif value[25:54].strip() == ROUND_START and did_find_world_win:
+            global START_TIME
+            date_string = value[1:23].strip()
+            print(date_string)
+            START_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
+            return all_lines[len(all_lines) - i - 1: end_index]
+    print("here")
 # def 
 def get_all_matches(all_lines):
     # for i in all_lines:
@@ -171,6 +186,7 @@ def get_all_matches(all_lines):
 def is_current_match_completed(match_info):
     for i in match_info[::-1]:
         if i[25:52].strip() == ROUND_END:
+            print(i)
             date_string = i[1:23].strip()
             global END_TIME
             END_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
@@ -180,6 +196,8 @@ def is_current_match_completed(match_info):
 def get_match_type(match_details):
     #TODO add method for getting the type
     match_type_pattern = r'\(gametype "(.*?)"\)'
+    global START_TIME
+    global END_TIME
     match_type_info = match_details[0][54:].strip()
     match_type = re.search(match_type_pattern, match_type_info)
     if match_type is None:
@@ -333,7 +351,6 @@ def process_unit_kills(all_match_info, all_players):
                     continue
                 if (int(player_id), Factions(player_faction)) not in all_players:
                     create_new_player(all_players, all_match_info, player_id, player_faction, player_name)
-                # print()
                 all_players[(int(player_id), Factions(player_faction))].update_unit_kill(victim)#change/fix this for friendly kills?
 
 def probability(rating1, rating2):
@@ -416,7 +433,7 @@ def checking_all(file_name):
     all_lines = file_pointer.readlines()
     # match_log_info = get_current_match(all_lines)
     match_log_info = get_all_matches(all_lines)
-    print(match_log_info)
+    # print(match_log_info)
     all_parse_info = []
 
 
@@ -427,16 +444,12 @@ def checking_all(file_name):
     return all_parse_info
 
 def parse_info(match_log_info):
-    # print(match_log_info)
-    # input()
     get_match_start(match_log_info)
-    global START_TIME
-    print(START_TIME)
     is_complete = is_current_match_completed(match_log_info)
-    match_type_info = (get_match_type(match_log_info))
     if not is_complete:
         print("Aborting parsing, last match has incomplete information")
         exit()
+    match_type_info = (get_match_type(match_log_info))
     all_essential_info = list(filter(remove_chat_messages, match_log_info))
     winning_team = get_winning_team(all_essential_info)
     all_essential_info = [remove_date_data(line) for line in all_essential_info]
@@ -447,7 +460,6 @@ def parse_info(match_log_info):
     print("all_players")
     for i in all_players.values():
         print(i)
-    # input()
     return match_type_info, winning_team, all_players
 
 
@@ -455,7 +467,7 @@ def parse_info(match_log_info):
 def checking(file_name):
     file_pointer = open(file_name, "r")
     all_lines = file_pointer.readlines()
-    match_log_info = get_current_match(all_lines)
+    match_log_info = get_latest_complete_match(all_lines)
     return parse_info(match_log_info)
 
 if __name__ == "__main__":
