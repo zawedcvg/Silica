@@ -429,7 +429,7 @@ def elo_rating_commander(elo_list, win_list, K=30):
 #reading the file
 #TODO add flag to parse the entire log as for testing/some purpose
 def checking_all(file_name):
-    file_pointer = open(file_name, "r")
+    file_pointer = open(file_name, 'r', errors='replace')
     all_lines = file_pointer.readlines()
     # match_log_info = get_current_match(all_lines)
     match_log_info = get_all_matches(all_lines)
@@ -465,7 +465,7 @@ def parse_info(match_log_info):
 
 
 def checking(file_name):
-    file_pointer = open(file_name, "r")
+    file_pointer = open(file_name, "r", errors='replace')
     all_lines = file_pointer.readlines()
     match_log_info = get_latest_complete_match(all_lines)
     return parse_info(match_log_info)

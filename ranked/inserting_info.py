@@ -38,6 +38,7 @@ async def main(match_type_info, winning_team, all_players) -> None:
 
     #dont remove, this is for clearing the database
     # await prisma.matches.delete_many()
+    # await prisma.players.delete_many()
     # await prisma.matches_players_commander.delete_many()
     # await prisma.matches_players_fps.delete_many()
     # await prisma.rankings_commander.delete_many()
@@ -134,7 +135,7 @@ async def main(match_type_info, winning_team, all_players) -> None:
     await prisma.disconnect()
 
 if __name__ == '__main__':
-    sys.stdout = open('parser_stdout.log', 'w')
+    sys.stdout = open('parser_stdout.txt', 'w')
     sys.stderr = open('parser_stderr.txt', 'w')
     all_parse_info = checking(sys.argv[1])
     all_parse_info = [all_parse_info]
