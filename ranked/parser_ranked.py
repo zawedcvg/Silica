@@ -96,19 +96,18 @@ ROUND_END = "World triggered \"Round_Win\""
 END_TIME = ""
 START_TIME = ""
 
-with open("./tier_one_units.txt", "r") as fp:
-    tier_one_units = [i.strip() for i in fp.readlines()]
-with open("./tier_two_units.txt", "r") as fp:
-    tier_two_units = [i.strip() for i in fp.readlines()]
-with open("./tier_three_units.txt", "r") as fp:
-    tier_three_units = [i.strip() for i in fp.readlines()]
 
-with open("./tier_one_structures.txt", "r") as fp:
-    tier_one_structures = [i.strip() for i in fp.readlines()]
-with open("./tier_two_structures.txt", "r") as fp:
-    tier_two_structures = [i.strip() for i in fp.readlines()]
-with open("./tier_three_structures.txt", "r") as fp:
-    tier_three_structures = [i.strip() for i in fp.readlines()]
+tier_one_units = ["Crab", "Crab_Horned", "Shocker", "Shrimp", "Soldier_Rifleman", "Soldier_Scout", "Soldier_Heavy", "Soldier_Marksman", "LightQuad", "Wasp", "HoverBike", "Worm", "FlakTruck"]
+
+tier_two_units = ["Behemoth", "Hunter", "LightArmoredCar", "ArmedTransport", "HeavyArmoredCar", "TroopTransport", "HeavyQuad", "RocketLauncher", "PulseTank", "AirGunship", "AirFighter", "AirDropship", "Dragonfly", "Firebug", "Soldier_Commando", "GreatWorm"]
+
+tier_three_units = ["Queen", "Scorpion", "Goliath", "BomberCraft", "HeavyHarvester", "HoverTank", "RailgunTank", "SiegeTank", "AirBomber", "Defiler", "Colossus"]
+
+tier_one_structures = ["HiveSpire", "LesserSpawningCyst", "Node", "ThornSpire", "Outpost", "RadarStation", "Silo"]
+
+tier_two_structures = ["BioCache", "Barracks", "HeavyVehicleFactory", "LightVehicleFactory", "QuantumCortex", "GreaterSpawningCyst", "Refinery", "Bunker", "ConstructionSite_TurretHeavy", "TurretHeavy", "TurretMedium", "GrandSpawningCyst", "TurretAARocket"]
+
+tier_three_structures = ["ResearchFacility", "Nest", "UltraHeavyVehicleFactory", "Headquarters", "GrandSpawningCyst", "ColossalSpawningCyst", "AirFactory"]
 
 def is_valid_faction_type(match_type: Modes, faction_type: Factions):
     if match_type == Modes.CENTAURI_VS_SOL:
@@ -126,16 +125,13 @@ def create_new_player(all_players, match_info, player_id, player_faction, player
     new_player = Player(player_id, player_name, Factions(player_faction))
     winning_team = get_winning_team(match_info)
     new_player.did_win(winning_team)
-    print("here")
     all_players[(player_id, Factions(player_faction))] = new_player
-    print(all_players[(player_id, Factions(player_faction))])
 
 def get_match_start(all_lines):
     for i, value in enumerate(all_lines):
         if value[25:54].strip() == ROUND_START:
             global START_TIME
             date_string = value[1:23].strip()
-            print(date_string)
             START_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
 
 def get_current_match(all_lines):
@@ -152,17 +148,14 @@ def get_latest_complete_match(all_lines):
     did_find_world_win = False
     end_index = None
     for i, value in enumerate(inverted_list):
-        # print(value[25:82])
         if value[25:52].strip() == ROUND_END:
             did_find_world_win = True
             end_index = len(all_lines) - i
         elif value[25:54].strip() == ROUND_START and did_find_world_win:
             global START_TIME
             date_string = value[1:23].strip()
-            print(date_string)
             START_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             return all_lines[len(all_lines) - i - 1: end_index]
-    print("here")
 # def 
 def get_all_matches(all_lines):
     # for i in all_lines:
@@ -176,7 +169,6 @@ def get_all_matches(all_lines):
 
     if start[0] > end[0]:
         end.pop(0)
-        # print(True)
 
     return list(zip(start, end))
 
@@ -186,7 +178,6 @@ def get_all_matches(all_lines):
 def is_current_match_completed(match_info):
     for i in match_info[::-1]:
         if i[25:52].strip() == ROUND_END:
-            print(i)
             date_string = i[1:23].strip()
             global END_TIME
             END_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
@@ -216,20 +207,26 @@ def get_commanders(match_log_info, match_mode_info, all_players):
     #TODO complete the implementation once logging bug is fixed
     #get the person with the max time as commander
     commander_joined_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "Commander"'
+    # commander_joined_pattern = r'".*?<.*?><.*?><.*?>" say "<b><color=#.*?>\[.*?\]</b> Promoted <.*?>(.*?)<color=.*?> to commander for '
     commander_left_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "Infantry"'
+    commander_left_pattern_2 = r'"(.*?)<(.*?)><(.*?)><(.*?)>" disconnected'
+    current_commander = collections.defaultdict(lambda: 0)
+    # commander_left_pattern = r'".*?<.*?><.*?><.*?>" say "<b><color=#.*?>\[.*?\]</b> <.*?>(.*?)<color=.*?> left commander position vacant for '
     #mode, factions = match_mode_info incase i add more checks
     all_commanders = collections.defaultdict(list)
     commander_durations = collections.defaultdict(list)
-    commander_log_info = filter(lambda x: "changed" in x, match_log_info)
+    commander_log_info = filter(lambda x: "changed" in x or "disconnected" in x, match_log_info)
     #TODO, fix to set, else leave it as is.
     for i in commander_log_info:
         joined_match = re.search(commander_joined_pattern, i)
         left_match = re.search(commander_left_pattern, i)
+        left_match_2 = re.search(commander_left_pattern_2, i)
         if joined_match:
             date_string = i[1:23].strip()
             start_time = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             commander = int(joined_match.group(3))
             faction_type = Factions(joined_match.group(4))
+            current_commander[faction_type] = commander
             if (commander, faction_type) not in all_players:
                 create_new_player(all_players, match_log_info, commander, joined_match.group(4), joined_match.group(1))
 
@@ -241,8 +238,23 @@ def get_commanders(match_log_info, match_mode_info, all_players):
         elif left_match:
             commander = int(left_match.group(3))
             faction_type = Factions(left_match.group(4))
+            current_commander[faction_type] = 0
             if (commander, faction_type) not in all_players:
                 create_new_player(all_players, match_log_info, commander, left_match.group(4), left_match.group(1))
+            player = all_players[(commander, faction_type)]
+            if player not in all_commanders[faction_type]:
+                continue
+            date_string = i[1:23].strip()
+            end_time = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
+            commander_durations[player].append(end_time)
+        elif left_match_2:
+            commander = int(left_match_2.group(3))
+            faction_type = Factions(left_match_2.group(4))
+            if current_commander[faction_type] != commander:
+                continue
+            current_commander[faction_type] = 0
+            if (commander, faction_type) not in all_players:
+                create_new_player(all_players, match_log_info, commander, left_match_2.group(4), left_match_2.group(1))
             player = all_players[(commander, faction_type)]
             if player not in all_commanders[faction_type]:
                 continue
@@ -433,7 +445,6 @@ def checking_all(file_name):
     all_lines = file_pointer.readlines()
     # match_log_info = get_current_match(all_lines)
     match_log_info = get_all_matches(all_lines)
-    # print(match_log_info)
     all_parse_info = []
 
 
