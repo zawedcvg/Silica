@@ -471,9 +471,9 @@ def parse_info(match_log_info):
     process_structure_kills(all_essential_info, all_players)
     process_unit_kills(all_essential_info, all_players)
     _ = get_commanders(match_log_info, None, all_players)
-    print("all_players")
-    for i in all_players.values():
-        print(i)
+    # print("all_players")
+    # for i in all_players.values():
+        # print(i)
     return match_type_info, winning_team, all_players
 
 
