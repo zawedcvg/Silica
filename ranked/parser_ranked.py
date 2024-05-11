@@ -249,7 +249,10 @@ def get_commanders(match_log_info, match_mode_info, all_players):
             commander_durations[player].append(end_time)
         elif left_match_2:
             commander = int(left_match_2.group(3))
-            faction_type = Factions(left_match_2.group(4))
+            faction = left_match_2.group(4)
+            if faction == "":
+                continue
+            faction_type = Factions(faction)
             if current_commander[faction_type] != commander:
                 continue
             current_commander[faction_type] = 0
