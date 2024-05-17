@@ -59,10 +59,12 @@ class Player:
             self.points += 10
         elif unit in tier_three_units:
             self.unit_kill[2] += 1
-            self.points += 50
+            if unit == "Queen":
+                self.points += 100
+            else:
+                self.points += 50
         else:
             print(unit)
-        # if unit in tier_one:
     def update_death(self, unit):
         self.death += 1
         if unit in tier_one_units:
@@ -75,12 +77,13 @@ class Player:
     def set_commander(self):
         self.is_commander = True
     def is_fps(self):
-        return not(self.unit_kill == 0 and self.structure_kill == 0 and self.death == 0 and self.is_commander)
+        all_sum = sum(self.unit_kill) + sum(self.structure_kill) + self.death
+        return all_sum != 0
     def did_win(self, winning_team: Factions):
         self.winner = (winning_team == self.faction_type)
     def __str__(self):
         return f"name: {self.player_name}, id: {self.player_id}, faction_type: {self.faction_type.value}, \
-unit_kills: {self.unit_kill}, structure_kill: {self.structure_kill}, deaths = {self.death} self.winner = {self.winner} is_commander = {self.is_commander} points= {self.points}"
+unit_kills: {self.unit_kill}, structure_kill: {self.structure_kill}, deaths = {self.death} self.winner = {self.winner} is_infantry = {self.is_fps()} is_commander = {self.is_commander} points= {self.points}"
 
 #TODO
 #to get thing, just to Factions(name).name?
@@ -183,6 +186,10 @@ def is_current_match_completed(match_info):
             END_TIME = datetime.strptime(date_string, "%m/%d/%Y - %H:%M:%S")
             return True
     return False
+
+def filter_irrelevant_fps_players():
+    pass
+
 
 def get_match_type(match_details):
     #TODO add method for getting the type

@@ -135,9 +135,12 @@ async def main(match_type_info, winning_team, all_players) -> None:
     await prisma.disconnect()
 
 if __name__ == '__main__':
-    sys.stdout = open('parser_stdout.txt', 'w')
-    sys.stderr = open('parser_stderr.txt', 'w')
+    sys.stdout = open('parser_stdout.txt', 'a')
+    sys.stderr = open('parser_stderr.txt', 'a')
+    print("Starting the process")
+    print("Parsing the info")
     all_parse_info = checking(sys.argv[1])
+    print("Parsing succesful")
     all_parse_info = [all_parse_info]
     for match_type_info, winning_team, all_players in all_parse_info:
         mode, _, duration = match_type_info
