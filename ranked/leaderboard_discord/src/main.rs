@@ -1,4 +1,6 @@
 use rust_xlsxwriter::*;
+//use futures::TryStreamExt;
+use tokio_stream::StreamExt;
 
 use tokio::task::JoinSet;
 
@@ -105,10 +107,8 @@ where
         + serde::Serialize
         + for<'a> serde::Deserialize<'a>,
 {
-    let rows = sqlx::query_as::<_, T>(query)
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let rows_future = sqlx::query_as::<_, T>(query)
+        .fetch_all(&pool);
 
     let mut workbook = Workbook::new();
 
@@ -125,8 +125,10 @@ where
         .deserialize_headers_with_format::<T>(0, 0, &header_format)
         .unwrap();
 
-    // Serialize the data.
+
+    let rows = rows_future.await.unwrap();
     worksheet.serialize(&rows).unwrap();
+
     workbook.save(&file_name).unwrap();
     println!("Done with {}", file_name);
     //return ;
