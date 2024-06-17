@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .max_connections(5)
         .connect(&database_url)
         .await?;
+
     let query_commander = r#"
         SELECT p.username, f.name as faction, rc."ELO"
         FROM players p, factions f, rankings_commander rc
@@ -131,5 +132,4 @@ where
 
     workbook.save(&file_name).unwrap();
     println!("Done with {}", file_name);
-    //return ;
 }

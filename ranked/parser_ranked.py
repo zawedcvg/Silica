@@ -1,4 +1,5 @@
 from enum import Enum
+import os
 import sys
 import math
 import cProfile
@@ -37,13 +38,13 @@ class Player:
 
     def update_structure_kill(self, structure):
         self.total_structure_kills += 1
-        if structure in tier_one_structures:
+        if structure in TIER_ONE_STRUCTURES:
             self.structure_kill[0] += 1
             self.points += 10
-        elif structure in tier_two_structures:
+        elif structure in TIER_TWO_STRUCTURES:
             self.structure_kill[1] += 1
             self.points += 50
-        elif structure in tier_three_structures:
+        elif structure in TIER_THREE_STRUCTURES:
             self.structure_kill[2] += 1
             self.points += 100
         else:
@@ -51,13 +52,13 @@ class Player:
 
     def update_unit_kill(self, unit):
         self.total_unit_kills += 1
-        if unit in tier_one_units:
+        if unit in TIER_ONE_UNITS:
             self.unit_kill[0] += 1
             self.points += 1
-        elif unit in tier_two_units:
+        elif unit in TIER_TWO_UNITS:
             self.unit_kill[1] += 1
             self.points += 10
-        elif unit in tier_three_units:
+        elif unit in TIER_THREE_UNITS:
             self.unit_kill[2] += 1
             if unit == "Queen":
                 self.points += 100
@@ -67,11 +68,11 @@ class Player:
             print(unit)
     def update_death(self, unit):
         self.death += 1
-        if unit in tier_one_units:
+        if unit in TIER_ONE_UNITS:
             self.points -= 1
-        elif unit in tier_two_units:
+        elif unit in TIER_TWO_UNITS:
             self.points -= 10
-        elif unit in tier_three_units:
+        elif unit in TIER_THREE_UNITS:
             self.points -= 50
         #TODO subtract from points
     def set_commander(self):
@@ -98,19 +99,20 @@ ROUND_START = "World triggered \"Round_Start\""
 ROUND_END = "World triggered \"Round_Win\""
 END_TIME = ""
 START_TIME = ""
+LOADING_MAP = "Loading map"
 
 
-tier_one_units = ["Crab", "Crab_Horned", "Shocker", "Shrimp", "Soldier_Rifleman", "Soldier_Scout", "Soldier_Heavy", "Soldier_Marksman", "LightQuad", "Wasp", "HoverBike", "Worm", "FlakTruck"]
+TIER_ONE_UNITS = ["Crab", "Crab_Horned", "Shocker", "Shrimp", "Soldier_Rifleman", "Soldier_Scout", "Soldier_Heavy", "Soldier_Marksman", "LightQuad", "Wasp", "HoverBike", "Worm", "FlakTruck"]
 
-tier_two_units = ["Behemoth", "Hunter", "LightArmoredCar", "ArmedTransport", "HeavyArmoredCar", "TroopTransport", "HeavyQuad", "RocketLauncher", "PulseTank", "AirGunship", "AirFighter", "AirDropship", "Dragonfly", "Firebug", "Soldier_Commando", "GreatWorm"]
+TIER_TWO_UNITS = ["Behemoth", "Hunter", "LightArmoredCar", "ArmedTransport", "HeavyArmoredCar", "TroopTransport", "HeavyQuad", "RocketLauncher", "PulseTank", "AirGunship", "AirFighter", "AirDropship", "Dragonfly", "Firebug", "Soldier_Commando", "GreatWorm"]
 
-tier_three_units = ["Queen", "Scorpion", "Goliath", "BomberCraft", "HeavyHarvester", "HoverTank", "RailgunTank", "SiegeTank", "AirBomber", "Defiler", "Colossus"]
+TIER_THREE_UNITS = ["Queen", "Scorpion", "Goliath", "BomberCraft", "HeavyHarvester", "HoverTank", "RailgunTank", "SiegeTank", "AirBomber", "Defiler", "Colossus"]
 
-tier_one_structures = ["HiveSpire", "LesserSpawningCyst", "Node", "ThornSpire", "Outpost", "RadarStation", "Silo"]
+TIER_ONE_STRUCTURES = ["HiveSpire", "LesserSpawningCyst", "Node", "ThornSpire", "Outpost", "RadarStation", "Silo"]
 
-tier_two_structures = ["BioCache", "Barracks", "HeavyVehicleFactory", "LightVehicleFactory", "QuantumCortex", "GreaterSpawningCyst", "Refinery", "Bunker", "ConstructionSite_TurretHeavy", "TurretHeavy", "TurretMedium", "GrandSpawningCyst", "TurretAARocket"]
+TIER_TWO_STRUCTURES = ["BioCache", "Barracks", "HeavyVehicleFactory", "LightVehicleFactory", "QuantumCortex", "GreaterSpawningCyst", "Refinery", "Bunker", "ConstructionSite_TurretHeavy", "TurretHeavy", "TurretMedium", "GrandSpawningCyst", "TurretAARocket"]
 
-tier_three_structures = ["ResearchFacility", "Nest", "UltraHeavyVehicleFactory", "Headquarters", "GrandSpawningCyst", "ColossalSpawningCyst", "AirFactory"]
+TIER_THREE_STRUCTURES = ["ResearchFacility", "Nest", "UltraHeavyVehicleFactory", "Headquarters", "GrandSpawningCyst", "ColossalSpawningCyst", "AirFactory"]
 
 def is_valid_faction_type(match_type: Modes, faction_type: Factions):
     if match_type == Modes.CENTAURI_VS_SOL:
@@ -121,9 +123,6 @@ def is_valid_faction_type(match_type: Modes, faction_type: Factions):
         return True
 
 def create_new_player(all_players, match_info, player_id, player_faction, player_name):
-    # player_name = match.group(1)
-    # player_id = int(match.group(3))
-    # player_faction = match.group(5)
     player_id = int(player_id)
     new_player = Player(player_id, player_name, Factions(player_faction))
     winning_team = get_winning_team(match_info)
@@ -192,7 +191,7 @@ def filter_irrelevant_fps_players():
 
 
 def get_match_type(match_details):
-    #TODO add method for getting the type
+    """Gets the game mode, factions played and the number of seconds the game lasted"""
     match_type_pattern = r'\(gametype "(.*?)"\)'
     global START_TIME
     global END_TIME
@@ -211,7 +210,7 @@ def get_match_type(match_details):
     return game_mode, factions, (END_TIME - START_TIME).total_seconds()
 
 def get_commanders(match_log_info, match_mode_info, all_players):
-    #TODO complete the implementation once logging bug is fixed
+    #TODO Refactor this to improve readability
     #get the person with the max time as commander
     commander_joined_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "Commander"'
     # commander_joined_pattern = r'".*?<.*?><.*?><.*?>" say "<b><color=#.*?>\[.*?\]</b> Promoted <.*?>(.*?)<color=.*?> to commander for '
@@ -287,7 +286,10 @@ def get_commanders(match_log_info, match_mode_info, all_players):
                 faction_commander = commander
         final_commander[faction] = faction_commander
 
-        faction_commander.set_commander()
+        if faction_commander is not None:
+            faction_commander.set_commander()
+        else:
+            print(f"Error occured while parsing faction_commander. faction_commander was None")
     return final_commander
 
 def remove_chat_messages(line):
@@ -380,8 +382,6 @@ def probability(rating1, rating2):
 
 #https://www.geeksforgeeks.org/elo-rating-algorithm/
 def elo_rating_commander(elo_list, win_list, K=30):
-    # To calculate the Winning
-    # Probability of Player B
     if len(elo_list) == 0:
         return []
     if len(elo_list) == 1:
@@ -448,15 +448,27 @@ def elo_rating_commander(elo_list, win_list, K=30):
         return R
 
 
+def get_current_map(all_file_info):
+    all_essential_info = list(filter(remove_chat_messages, all_file_info))
+    all_essential_info = [remove_date_data(line) for line in all_essential_info]
+    all_essential_info = filter(lambda x: LOADING_MAP in x, all_essential_info)
+    current_map_info = list(all_essential_info)[-1]
+    loading_map_pattern = r'Loading map "(.*)"'
+    map_search = re.search(loading_map_pattern, current_map_info)
+    if map_search == None:
+        print("Map info not found in the current folder")
+        return None
+    else:
+        return map_search.group(1)
+
+
 #reading the file
-#TODO add flag to parse the entire log as for testing/some purpose
 def checking_all(file_name):
     file_pointer = open(file_name, 'r', errors='replace')
     all_lines = file_pointer.readlines()
     # match_log_info = get_current_match(all_lines)
     match_log_info = get_all_matches(all_lines)
     all_parse_info = []
-
 
     for start, end in match_log_info:
         the_match_lines = all_lines[start:end + 1]
@@ -465,6 +477,8 @@ def checking_all(file_name):
     return all_parse_info
 
 def parse_info(match_log_info):
+    """Parses a list of strings to extract the match type, contributions by players and commanders,
+    and the winning team  """
     get_match_start(match_log_info)
     is_complete = is_current_match_completed(match_log_info)
     if not is_complete:
@@ -477,13 +491,25 @@ def parse_info(match_log_info):
     all_players = get_all_players(all_essential_info, winning_team)
     process_structure_kills(all_essential_info, all_players)
     process_unit_kills(all_essential_info, all_players)
+
     _ = get_commanders(match_log_info, None, all_players)
-    # print("all_players")
-    # for i in all_players.values():
-        # print(i)
     return match_type_info, winning_team, all_players
 
 
+
+def checking_folder(folder_name):
+    files = [i for i in os.listdir(folder_name) if i.endswith(".log")]
+    files = [os.path.join(folder_name, i) for i in os.listdir(folder_name) if i.endswith(".log")]
+    files = sorted(files)
+    all_lines = []
+
+    for file in files:
+        file_pointer = open(file, "r", errors='replace')
+        all_lines += file_pointer.readlines()
+        file_pointer.close()
+    match_log_info = get_latest_complete_match(all_lines)
+    current_map = get_current_map(all_lines)
+    return *parse_info(match_log_info), current_map
 
 def checking(file_name):
     file_pointer = open(file_name, "r", errors='replace')
@@ -492,4 +518,5 @@ def checking(file_name):
     return parse_info(match_log_info)
 
 if __name__ == "__main__":
-    checking_all(sys.argv[1])
+    # checking_all(sys.argv[1])
+    print(checking_folder(sys.argv[1]))

@@ -5,10 +5,12 @@ from parser_ranked import checking, checking_all, elo_rating_commander
 
 from dotenv import load_dotenv
 
+#Change this to the correct .env
 load_dotenv(r"C:\Program Files (x86)\Steam\steamapps\common\Silica\UserData\.env")
 
-modes_id = {"HUMANS_VS_ALIENS": 0, "HUMANS_VS_HUMANS": 1, "HUMANS_VS_HUMANS_VS_ALIENS": 2}
-factions_id = {"Alien": 0, "Centauri": 1, "Sol": 2, "Wildlife": 3}
+MODES_ID = {"HUMANS_VS_ALIENS": 0, "HUMANS_VS_HUMANS": 1, "HUMANS_VS_HUMANS_VS_ALIENS": 2}
+FACTIONS_ID = {"Alien": 0, "Centauri": 1, "Sol": 2, "Wildlife": 3}
+MAP_ID = {}
 
 def get_fps_data(player, player_id, match_id):
     tier_one_unit_kills, tier_two_unit_kills, tier_three_unit_kills = player.unit_kill
@@ -16,7 +18,7 @@ def get_fps_data(player, player_id, match_id):
     to_insert = {
         'player_id': player_id,
         'match_id': match_id,
-        'faction_id': factions_id[player.faction_type.value],
+        'faction_id': FACTIONS_ID[player.faction_type.value],
         'tier_one_kills': tier_one_unit_kills,
         'tier_two_kills': tier_two_unit_kills,
         'tier_three_kills': tier_three_unit_kills,
@@ -28,13 +30,13 @@ def get_fps_data(player, player_id, match_id):
         }
     return to_insert
 
-async def main(match_type_info, winning_team, all_players) -> None:
+async def main(match_type_info, winning_team, all_players, current_map) -> None:
     prisma = Prisma()
     await prisma.connect()
 
     mode, _, duration = match_type_info
-    winning_team_faction_id = factions_id[winning_team.value]
-    mode_id = modes_id[mode.value]
+    winning_team_faction_id = FACTIONS_ID[winning_team.value]
+    mode_id = MODES_ID[mode.value]
 
     #dont remove, this is for clearing the database
     # await prisma.matches.delete_many()
@@ -43,11 +45,16 @@ async def main(match_type_info, winning_team, all_players) -> None:
     # await prisma.matches_players_fps.delete_many()
     # await prisma.rankings_commander.delete_many()
     # exit()
+    if current_map == None:
+        maps_id = 0
+    else:
+        #TODO replace
+        maps_id = 0
 
     match_info = await prisma.matches.create(
         data={
             'match_length': duration,
-            'maps_id': 0,
+            'maps_id': maps_id,
             'modes_id': mode_id,
             'match_won_faction_id': winning_team_faction_id,
         },
@@ -64,7 +71,7 @@ async def main(match_type_info, winning_team, all_players) -> None:
 
     for player in all_players.items():
         player_info, player_object = player
-        steam_id, faction = player_info
+        steam_id, _ = player_info
         # ta
         tasks.append(asyncio.create_task(prisma.players.find_first(where={'steam_id': steam_id})))
 
@@ -86,7 +93,7 @@ async def main(match_type_info, winning_team, all_players) -> None:
         else:
             player_id = output.id
 
-        faction_id = factions_id[player_object.faction_type.value]
+        faction_id = FACTIONS_ID[player_object.faction_type.value]
         if player_object.is_fps():
             to_insert = get_fps_data(player_object, player_id, match_id)
             player_fps_info.append(to_insert)
@@ -144,6 +151,6 @@ if __name__ == '__main__':
     all_parse_info = [all_parse_info]
     for match_type_info, winning_team, all_players in all_parse_info:
         mode, _, duration = match_type_info
-        asyncio.run(main(match_type_info, winning_team, all_players))
+        asyncio.run(main(match_type_info, winning_team, all_players, None))
     sys.stdout.close()
     sys.stderr.close()
