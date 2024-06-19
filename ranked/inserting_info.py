@@ -1,7 +1,7 @@
 import asyncio
 import sys
 from prisma import Prisma
-from parser_ranked import checking, checking_all, elo_rating_commander
+from parser_ranked import checking, checking_all, checking_folder, elo_rating_commander
 
 from dotenv import load_dotenv
 
@@ -10,7 +10,8 @@ load_dotenv(r"C:\Program Files (x86)\Steam\steamapps\common\Silica\UserData\.env
 
 MODES_ID = {"HUMANS_VS_ALIENS": 0, "HUMANS_VS_HUMANS": 1, "HUMANS_VS_HUMANS_VS_ALIENS": 2}
 FACTIONS_ID = {"Alien": 0, "Centauri": 1, "Sol": 2, "Wildlife": 3}
-MAP_ID = {}
+# 1-indexing map_id as 0 is set to be invalid maps
+MAP_ID = {"NarakaCity": 1, "MonumentValley": 2, "RiftBasin": 3, "Badlands": 4, "GreatErg": 5}
 
 def get_fps_data(player, player_id, match_id):
     tier_one_unit_kills, tier_two_unit_kills, tier_three_unit_kills = player.unit_kill
@@ -48,8 +49,11 @@ async def main(match_type_info, winning_team, all_players, current_map) -> None:
     if current_map == None:
         maps_id = 0
     else:
-        #TODO replace
-        maps_id = 0
+        if current_map in MAP_ID.keys():
+            maps_id = MAP_ID[current_map]
+        else:
+            print(f"Map {current_map} not in Map Id")
+            maps_id = 0
 
     match_info = await prisma.matches.create(
         data={
@@ -146,11 +150,11 @@ if __name__ == '__main__':
     sys.stderr = open('parser_stderr.txt', 'a')
     print("Starting the process")
     print("Parsing the info")
-    all_parse_info = checking(sys.argv[1])
+    all_parse_info = checking_folder(sys.argv[1])
     print("Parsing succesful")
     all_parse_info = [all_parse_info]
-    for match_type_info, winning_team, all_players in all_parse_info:
+    for match_type_info, winning_team, all_players, map_type in all_parse_info:
         mode, _, duration = match_type_info
-        asyncio.run(main(match_type_info, winning_team, all_players, None))
+        asyncio.run(main(match_type_info, winning_team, all_players, map_type))
     sys.stdout.close()
     sys.stderr.close()
