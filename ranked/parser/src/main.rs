@@ -473,6 +473,7 @@ impl Game {
                 }
             };
 
+
             let enemy_faction_type = Game::get_factions(enemy_faction);
             match enemy_id.parse::<i64>() {
                 Ok(enemy_id) => {
@@ -488,6 +489,52 @@ impl Game {
                     //println!("Can't parse due to {e}");
                 }
             };
+        }
+    }
+
+    fn process_structure_kills(&mut self) {
+        //TODO make it optimized by using normal for loop or something else.
+        let kill_lines = self
+            .current_match
+            .clone()
+            .into_iter()
+            .filter(|line| line.contains(STRUCTURE_KILL));
+
+        let kill_regex = match Regex::new(
+            r#""(.*?)<(.*?)><(.*?)><(.*?)>" triggered "structure_kill" \(structure "(.*)"\) \(struct_team "(.*)"\)"#,
+        ) {
+            Ok(kill_regex) => kill_regex,
+            Err(e) => panic!("Error in creating the kill regex: {e}"),
+        };
+
+        for kill_line in kill_lines {
+            let kill_matches = kill_regex.captures(&kill_line);
+            let Some((
+                _,
+                [player_name, _, player_id, player_faction, enemy_structure, _],
+            )) = kill_matches.map(|cap| cap.extract())
+            else {
+                continue;
+            };
+
+            let faction_type = Game::get_factions(player_faction);
+
+            match player_id.parse::<i64>() {
+                Ok(player_id) => {
+                    let player = self
+                        .players
+                        .entry((player_id, faction_type))
+                        .or_insert_with(|| {
+                            Player::new(player_id, player_name.to_string(), faction_type)
+                        });
+                    player.update_structure_kill(enemy_structure);
+                }
+                Err(_) => {
+                    //change this, unnecessary thing
+                    //println!("Can't parse due to {e}");
+                }
+            };
+
         }
     }
 
@@ -616,6 +663,7 @@ fn parse_info(all_lines: Vec<String>) {
     game.get_winning_team();
     game.get_all_players();
     game.process_kills();
+    game.process_structure_kills();
     println!("{:?}", game.players);
 }
 
