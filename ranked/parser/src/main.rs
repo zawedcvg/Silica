@@ -6,7 +6,7 @@ use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 
-#[derive(PartialEq, Default)]
+#[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 enum Factions {
     #[default]
     Sol,
@@ -23,14 +23,15 @@ enum Modes {
     CentauriVsSolVsAlien,
 }
 
+#[derive(Debug)]
 struct Player {
-    player_id: i32,
+    player_id: i64,
     player_name: String,
     faction_type: Factions,
     is_commander: bool,
-    unit_kill: Vec<i32>,
+    unit_kill: [i32; 3],
     total_unit_kills: i32,
-    structure_kill: Vec<i32>,
+    structure_kill: [i32; 3],
     total_structure_kills: i32,
     death: i32,
     points: i32,
@@ -44,6 +45,7 @@ struct Game {
     match_type: Modes,
     map: Maps,
     winning_team: Factions,
+    players: HashMap<(i64, Factions), Player>,
 }
 
 //Modes consts
@@ -231,6 +233,22 @@ impl Player {
             _ => (),
         }
     }
+    fn new(player_id: i64, player_name: String, faction_type: Factions) -> Self {
+        Player {
+            player_id,
+            player_name,
+            faction_type,
+            is_commander: false,
+            unit_kill: [0, 0, 0],
+            total_unit_kills: 0,
+            structure_kill: [0, 0, 0],
+            total_structure_kills: 0,
+            death: 0,
+            points: 0,
+            winner: false,
+        }
+    }
+
     fn update_death(&mut self, unit: &str) {
         self.death += 1;
         match unit {
@@ -298,8 +316,6 @@ fn get_byte_indices(line: String, range: std::ops::Range<usize>) -> std::ops::Ra
         .map(|(i, _)| i)
         .unwrap_or(0);
 
-    // Finding valid end boundary
-    //println!("{line}");
     let valid_end = line
         .char_indices()
         .nth(range.end)
@@ -310,6 +326,58 @@ fn get_byte_indices(line: String, range: std::ops::Range<usize>) -> std::ops::Ra
 }
 
 impl Game {
+    fn get_factions(faction_name: &str) -> Factions {
+        let faction_type: Factions;
+        if faction_name == "Sol" {
+            faction_type = Factions::Sol;
+        } else if faction_name == "Alien" {
+            faction_type = Factions::Alien;
+        } else if faction_name == "Centauri" {
+            faction_type = Factions::Centauri;
+        } else {
+            faction_type = Factions::Wildlife;
+        }
+        faction_type
+    }
+    fn get_all_players(&mut self) {
+        let joined_team_lines = self
+            .current_match
+            .iter()
+            .filter(|x| remove_chat_messages(x))
+            .map(|x| remove_date_data(x))
+            .filter(|x| x.contains(JOINED_TEAM));
+
+        let join_match_regex =
+            Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" joined team "(.*)""#).unwrap();
+
+        for line in joined_team_lines {
+            let joined_player = join_match_regex.captures(line);
+            let Some((_, [player_name, _, player_id, _, player_faction])) =
+                joined_player.map(|caps| caps.extract())
+            else {
+                continue;
+            };
+            let faction_type: Factions;
+            if player_faction == "Sol" {
+                faction_type = Factions::Sol;
+            } else if player_faction == "Alien" {
+                faction_type = Factions::Alien;
+            } else if player_faction == "Centauri" {
+                faction_type = Factions::Centauri;
+            } else {
+                continue;
+            }
+
+            self.players.insert(
+                (player_id.parse::<i64>().unwrap(), faction_type),
+                Player::new(
+                    player_id.parse::<i64>().unwrap(),
+                    player_name.to_string(),
+                    faction_type,
+                ),
+            );
+        }
+    }
     fn get_current_match(&mut self, all_lines: &[String]) {
         let mut did_find_world_win = false;
         //TODO improve this part
@@ -342,7 +410,6 @@ impl Game {
                     Err(e) => panic!("Error in trying to parse round start time {e}"),
                 };
                 self.current_match = all_lines[all_lines.len() - i - 1..end_index].to_vec();
-                //println!("{:?}", self.current_match);
                 return;
             }
         }
@@ -363,8 +430,69 @@ impl Game {
         }
     }
 
+    fn process_kills(&mut self) {
+        //TODO make it optimized by using normal for loop or something else.
+        let kill_lines = self
+            .current_match
+            .clone()
+            .into_iter()
+            .filter(|line| line.contains(KILLED));
+
+        let kill_regex = match Regex::new(
+            r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
+        ) {
+            Ok(kill_regex) => kill_regex,
+            Err(e) => panic!("Error in creating the kill regex: {e}"),
+        };
+
+        for kill_line in kill_lines {
+            let kill_matches = kill_regex.captures(&kill_line);
+            let Some((
+                _,
+                [player_name, _, player_id, player_faction, enemy_name, _, enemy_id, enemy_faction, _, _, victim],
+            )) = kill_matches.map(|cap| cap.extract())
+            else {
+                continue;
+            };
+
+            let faction_type = Game::get_factions(player_faction);
+
+            match player_id.parse::<i64>() {
+                Ok(player_id) => {
+                    let player = self
+                        .players
+                        .entry((player_id, faction_type))
+                        .or_insert_with(|| {
+                            Player::new(player_id, player_name.to_string(), faction_type)
+                        });
+                    player.update_unit_kill(victim);
+                }
+                Err(_) => {
+                    //change this, unnecessary thing
+                    //println!("Can't parse due to {e}");
+                }
+            };
+
+            let enemy_faction_type = Game::get_factions(enemy_faction);
+            match enemy_id.parse::<i64>() {
+                Ok(enemy_id) => {
+                    let enemy_player = self
+                        .players
+                        .entry((enemy_id, enemy_faction_type))
+                        .or_insert_with(|| {
+                            Player::new(enemy_id, enemy_name.to_string(), enemy_faction_type)
+                        });
+                    enemy_player.update_death(victim);
+                }
+                Err(_) => {
+                    //println!("Can't parse due to {e}");
+                }
+            };
+        }
+    }
+
     fn get_current_map(&mut self, all_lines: &[String]) {
-        let mut req_info = all_lines
+        let req_info = all_lines
             .iter()
             .filter(|x| remove_chat_messages(x))
             .map(|x| remove_date_data(x))
@@ -392,12 +520,13 @@ impl Game {
                     } else if map_str == "GreatErg" {
                         self.map = Maps::GreatErg
                     }
-                    return
+                    return;
                 }
                 None => continue,
             }
         }
     }
+
     fn get_winning_team(&mut self) {
         let winning_team_log = self
             .current_match
@@ -424,7 +553,7 @@ impl Game {
                     } else if winning_team_str == "Centauri" {
                         self.winning_team = Factions::Centauri;
                     }
-                    return
+                    return;
                 }
                 None => continue,
             }
@@ -442,6 +571,7 @@ impl Default for Game {
             match_type: Modes::default(),
             map: Maps::default(),
             winning_team: Factions::default(),
+            players: HashMap::new(),
         }
     }
 }
@@ -454,7 +584,9 @@ fn remove_chat_messages(line: &str) -> bool {
 
 fn remove_date_data(line: &str) -> &str {
     if line.len() > DATETIME_END {
-        &line.trim()[DATETIME_END..]
+        let byte_corrected_datetimeend =
+            get_byte_indices(line.to_string(), DATETIME_END..line.len());
+        &line.trim()[byte_corrected_datetimeend]
     } else {
         ""
     }
@@ -469,11 +601,22 @@ fn get_structure_kills(lines: Vec<&str>) -> Vec<&str> {
         .collect()
 }
 
-fn get_kills(lines: Vec<&str>) -> Vec<&str> {
+fn get_kills(lines: Vec<String>) -> Vec<String> {
     lines
         .into_iter()
         .filter(|line| line.contains(KILLED))
         .collect()
+}
+
+fn parse_info(all_lines: Vec<String>) {
+    let mut game = Game::default();
+    game.get_current_map(&all_lines);
+    game.get_current_match(&all_lines);
+    game.get_match_type();
+    game.get_winning_team();
+    game.get_all_players();
+    game.process_kills();
+    println!("{:?}", game.players);
 }
 
 fn checking_folder(path: String) {
@@ -505,11 +648,7 @@ fn checking_folder(path: String) {
             }
         }
     }
-    let mut game = Game::default();
-    game.get_current_map(&all_lines);
-    game.get_current_match(&all_lines);
-    game.get_match_type();
-    game.get_winning_team();
+    parse_info(all_lines);
 }
 
 fn main() {
