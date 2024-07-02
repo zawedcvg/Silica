@@ -1,5 +1,6 @@
 from enum import Enum
 import os
+from pathlib import Path
 import sys
 import math
 import cProfile
@@ -498,6 +499,7 @@ def parse_info(match_log_info):
 
 
 def checking_folder(folder_name):
+    folder_name = Path(folder_name)
     files = [i for i in os.listdir(folder_name) if i.endswith(".log")]
     files = [os.path.join(folder_name, i) for i in os.listdir(folder_name) if i.endswith(".log")]
     files = sorted(files)
