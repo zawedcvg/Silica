@@ -1,4 +1,4 @@
-use chrono::prelude::*;
+use chrono::{prelude::*, TimeDelta};
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
@@ -21,6 +21,52 @@ enum Modes {
     SolVsAlien,
     CentauriVsSol,
     CentauriVsSolVsAlien,
+}
+
+#[derive(Default)]
+struct CommanderDataStructure {
+    current_commander: HashMap<(i64, Factions), NaiveDateTime>,
+    commander_faction: HashMap<Factions, i64>,
+    commander_time: HashMap<(i64, Factions), TimeDelta>,
+}
+
+impl CommanderDataStructure {
+    fn add_commander_start(
+        &mut self,
+        player_id: i64,
+        faction_type: Factions,
+        time_start: NaiveDateTime,
+    ) {
+        self.commander_faction.insert(faction_type, player_id);
+        self.current_commander
+            .insert((player_id, faction_type), time_start);
+    }
+
+    fn add_commander_end(
+        &mut self,
+        player_id: i64,
+        faction_type: Factions,
+        time_end: NaiveDateTime,
+    ) {
+        //println!();
+        if let Some(time_start) = self.current_commander.remove(&(player_id, faction_type)) {
+            let duration = time_end.signed_duration_since(time_start);
+            let _ = self
+                .commander_time
+                .entry((player_id, faction_type))
+                .and_modify(|e| {
+                    *e += duration;
+                })
+                .or_insert(duration);
+        }
+    }
+
+    fn is_current_commander(&self, faction_type: Factions, player_id: i64) -> bool {
+        match self.commander_faction.get(&faction_type) {
+            Some(commander) => *commander == player_id,
+            None => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -48,15 +94,6 @@ struct Game {
     players: HashMap<(i64, Factions), Player>,
 }
 
-//Modes consts
-//const MAP_HASH: HashMap<&str, Maps> = HashMap::from([
-//("NarakaCity", Maps::NarakaCity),
-//("MonumentValley", Maps::MonumentValley),
-//("Badlands", Maps::Badlands),
-//("GreatErg", Maps::GreatErg),
-//("RiftBasin", Maps::RiftBasin)
-//]);
-
 const SOL_VS_ALIEN: &str = "HUMANS_VS_ALIENS";
 const CENTAURI_VS_SOL: &str = "HUMANS_VS_HUMANS";
 const CENTAURI_VS_SOL_VS_ALIEN: &str = "HUMANS_VS_HUMANS_VS_ALIENS";
@@ -69,10 +106,10 @@ const CHAT: &str = "say";
 const TEAM_CHAT: &str = "say_team";
 const ROUND_START: &str = "World triggered \"Round_Start\"";
 const ROUND_END: &str = "World triggered \"Round_Win\"";
-const END_TIME: &str = "";
-const START_TIME: &str = "";
 const LOADING_MAP: &str = "Loading map";
 const TRIGGERED: &str = "triggered";
+const CHANGED_ROLE: &str = "changed role";
+const DISCONNECTED: &str = "disconnected";
 
 //Point allocation consts
 const TIER_ONE_STRUCTURE_POINTS: i32 = 10;
@@ -184,12 +221,6 @@ const TIER_THREE_STRUCTURES: &[&str] = &[
     "ColossalSpawningCyst",
     "AirFactory",
 ];
-
-//impl Default for Modes{
-//fn default() -> Self {
-//Modes::SolVsAlien
-//}
-//}
 
 impl Player {
     fn update_structure_kill(&mut self, structure: &str) {
@@ -339,6 +370,113 @@ impl Game {
         }
         faction_type
     }
+
+    fn get_commanders(&mut self) {
+        // First need to store the current commanders
+        // need to process the disconnected using current commanders
+        // when there is 2 things, we squash and add the time to a complete counter
+        // at the end the highest is measured for each team and that is returned?
+        // one containing (player_id, faction) and its duration. Another containing end?
+        // another containing the current commanders and the player_id was start duration?
+        // and then pop that when it leaves?
+
+        //data strcuture with just the commanders, factions and start time
+        //data structure with
+        //let commander_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "()"'
+        let role_change_pattern =
+            Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "(.*?)""#).unwrap();
+
+        let player_disconnect = Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" disconnected"#).unwrap();
+
+        let mut data_structure = CommanderDataStructure::default();
+
+        let req_lines = self.current_match.iter().filter(|x| {
+            remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
+        });
+        //.filter(|x| x.contains(CHANGED_ROLE));
+
+        for line in req_lines {
+            if line.contains(DISCONNECTED) {
+                let pattern_capture = player_disconnect.captures(line);
+                let Some((_, [_, _, player_id, player_faction])) =
+                    pattern_capture.map(|caps| caps.extract())
+                else {
+                    continue;
+                };
+
+                let faction_type = Game::get_factions(player_faction);
+
+                let player_id = player_id.parse::<i64>().unwrap_or_else(|e| {
+                    panic!("Could not parse player id in player disconnect due to {e}")
+                });
+
+                if data_structure.is_current_commander(faction_type, player_id) {
+                    let byte_matched_datetime_range =
+                        get_byte_indices(line.to_string(), DATETIME_RANGE);
+
+                    let time_end = match NaiveDateTime::parse_from_str(
+                        line[byte_matched_datetime_range].trim(),
+                        "%m/%d/%Y - %H:%M:%S",
+                    ) {
+                        Ok(time_end) => time_end,
+                        Err(e) => {
+                            panic!("Error in trying to parse round start time: {e}")
+                        }
+                    };
+                    data_structure.add_commander_end(player_id, faction_type, time_end);
+                }
+            } else {
+                let pattern_capture = role_change_pattern.captures(line);
+                let Some((_, [_, _, player_id, player_faction, role])) =
+                    pattern_capture.map(|caps| caps.extract())
+                else {
+                    continue;
+                };
+                let byte_matched_datetime_range =
+                    get_byte_indices(line.to_string(), DATETIME_RANGE);
+
+                let role_change_time = match NaiveDateTime::parse_from_str(
+                    line[byte_matched_datetime_range].trim(),
+                    "%m/%d/%Y - %H:%M:%S",
+                ) {
+                    Ok(datetime) => datetime,
+                    Err(e) => {
+                        panic!("Error in trying to parse round start time: {e}")
+                    }
+                };
+
+                let faction_type = Game::get_factions(player_faction);
+                let player_id = player_id.parse::<i64>().unwrap_or_else(|e| {
+                    panic!("error in parsing the commander player id due to : {e}")
+                });
+
+                if role == "Commander" {
+                    data_structure.add_commander_start(player_id, faction_type, role_change_time);
+                } else if data_structure.is_current_commander(faction_type, player_id) {
+                    data_structure.add_commander_end(player_id, faction_type, role_change_time);
+                }
+            }
+        }
+
+        let mut to_change: Vec<(i64, Factions)> = Vec::new();
+        for ((player_id, faction_type), _) in data_structure.current_commander.iter() {
+            to_change.push((player_id.to_owned(), faction_type.to_owned()));
+        }
+
+        for (player_id, faction_type) in to_change {
+            data_structure.add_commander_end(player_id, faction_type, self.end_time);
+        }
+
+        for (key, time_delta) in data_structure.commander_time {
+            println!(
+                "{:#?}, {:#?}",
+                self.players.get(&key).unwrap().player_name,
+                key.1
+            );
+            println!("{:#?}", time_delta.num_minutes());
+        }
+    }
+
     fn get_all_players(&mut self) {
         let joined_team_lines = self
             .current_match
@@ -378,6 +516,7 @@ impl Game {
             );
         }
     }
+
     fn get_current_match(&mut self, all_lines: &[String]) {
         let mut did_find_world_win = false;
         //TODO improve this part
@@ -473,7 +612,6 @@ impl Game {
                 }
             };
 
-
             let enemy_faction_type = Game::get_factions(enemy_faction);
             match enemy_id.parse::<i64>() {
                 Ok(enemy_id) => {
@@ -509,10 +647,8 @@ impl Game {
 
         for kill_line in kill_lines {
             let kill_matches = kill_regex.captures(&kill_line);
-            let Some((
-                _,
-                [player_name, _, player_id, player_faction, enemy_structure, _],
-            )) = kill_matches.map(|cap| cap.extract())
+            let Some((_, [player_name, _, player_id, player_faction, enemy_structure, _])) =
+                kill_matches.map(|cap| cap.extract())
             else {
                 continue;
             };
@@ -534,7 +670,6 @@ impl Game {
                     //println!("Can't parse due to {e}");
                 }
             };
-
         }
     }
 
@@ -664,7 +799,8 @@ fn parse_info(all_lines: Vec<String>) {
     game.get_all_players();
     game.process_kills();
     game.process_structure_kills();
-    println!("{:?}", game.players);
+    game.get_commanders();
+    //println!("{:?}", game.players);
 }
 
 fn checking_folder(path: String) {
