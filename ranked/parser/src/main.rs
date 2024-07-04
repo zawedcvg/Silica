@@ -63,9 +63,30 @@ impl CommanderDataStructure {
 
     fn is_current_commander(&self, faction_type: Factions, player_id: i64) -> bool {
         match self.commander_faction.get(&faction_type) {
-            Some(commander) => *commander == player_id,
+            Some(&commander) => commander == player_id,
             None => false,
         }
+    }
+
+    fn get_all_commander(&self) -> HashMap<Factions, i64> {
+        //let playing_factions = game.get_playing_factions();
+        //let thing = game []
+        let mut max_duration: HashMap<Factions, (i64, TimeDelta)> = HashMap::new();
+        for ((id, faction), time_delta) in &self.commander_time {
+            max_duration
+                .entry(*faction)
+                .and_modify(|e| {
+                    if e.1 < *time_delta {
+                        *e = (id.to_owned(), time_delta.to_owned())
+                    }
+                })
+                .or_insert((*id, *time_delta));
+        }
+        let mut to_return: HashMap<Factions, i64> = HashMap::new();
+        for (faction, (player_id, _)) in max_duration {
+            to_return.insert(faction, player_id);
+        }
+        to_return
     }
 }
 
@@ -264,6 +285,7 @@ impl Player {
             _ => (),
         }
     }
+
     fn new(player_id: i64, player_name: String, faction_type: Factions) -> Self {
         Player {
             player_id,
@@ -357,6 +379,16 @@ fn get_byte_indices(line: String, range: std::ops::Range<usize>) -> std::ops::Ra
 }
 
 impl Game {
+    fn get_playing_factions(&self) -> Vec<Factions> {
+        match self.match_type {
+            Modes::SolVsAlien => [Factions::Sol, Factions::Alien].to_vec(),
+            Modes::CentauriVsSol => [Factions::Centauri, Factions::Sol].to_vec(),
+            Modes::CentauriVsSolVsAlien => {
+                [Factions::Sol, Factions::Alien, Factions::Wildlife].to_vec()
+            }
+        }
+    }
+
     fn get_factions(faction_name: &str) -> Factions {
         let faction_type: Factions;
         if faction_name == "Sol" {
@@ -372,17 +404,6 @@ impl Game {
     }
 
     fn get_commanders(&mut self) {
-        // First need to store the current commanders
-        // need to process the disconnected using current commanders
-        // when there is 2 things, we squash and add the time to a complete counter
-        // at the end the highest is measured for each team and that is returned?
-        // one containing (player_id, faction) and its duration. Another containing end?
-        // another containing the current commanders and the player_id was start duration?
-        // and then pop that when it leaves?
-
-        //data strcuture with just the commanders, factions and start time
-        //data structure with
-        //let commander_pattern = r'"(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "()"'
         let role_change_pattern =
             Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" changed role to "(.*?)""#).unwrap();
 
@@ -393,7 +414,6 @@ impl Game {
         let req_lines = self.current_match.iter().filter(|x| {
             remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
         });
-        //.filter(|x| x.contains(CHANGED_ROLE));
 
         for line in req_lines {
             if line.contains(DISCONNECTED) {
@@ -467,14 +487,32 @@ impl Game {
             data_structure.add_commander_end(player_id, faction_type, self.end_time);
         }
 
-        for (key, time_delta) in data_structure.commander_time {
-            println!(
-                "{:#?}, {:#?}",
-                self.players.get(&key).unwrap().player_name,
-                key.1
-            );
-            println!("{:#?}", time_delta.num_minutes());
+        let final_commander = data_structure.get_all_commander();
+        //let mut all_players = self.get_all_players();
+
+        for (faction, player_id) in final_commander {
+            self.players
+                .entry((player_id, faction))
+                .and_modify(|e| e.set_commander());
         }
+
+        //println!("Individual stuff");
+        //for (key, time_delta) in data_structure.commander_time {
+            //println!(
+                //"{:#?}, {:#?}",
+                //self.players.get(&key).unwrap().player_name,
+                //key.1
+            //);
+            //println!("{:#?}", time_delta.num_minutes());
+        //}
+        //for (key, time_delta) in data_structure.commander_time {
+            //println!(
+                //"{:#?}, {:#?}",
+                //self.players.get(&key).unwrap().player_name,
+                //key.1
+            //);
+            //println!("{:#?}", time_delta.num_minutes());
+        //}
     }
 
     fn get_all_players(&mut self) {
@@ -495,21 +533,20 @@ impl Game {
             else {
                 continue;
             };
-            let faction_type: Factions;
-            if player_faction == "Sol" {
-                faction_type = Factions::Sol;
-            } else if player_faction == "Alien" {
-                faction_type = Factions::Alien;
-            } else if player_faction == "Centauri" {
-                faction_type = Factions::Centauri;
-            } else {
-                continue;
-            }
+
+            let faction_type = Game::get_factions(player_faction);
 
             self.players.insert(
-                (player_id.parse::<i64>().unwrap(), faction_type),
+                (
+                    player_id
+                        .parse::<i64>()
+                        .unwrap_or_else(|_| panic!("Error in parsing i64")),
+                    faction_type,
+                ),
                 Player::new(
-                    player_id.parse::<i64>().unwrap(),
+                    player_id
+                        .parse::<i64>()
+                        .unwrap_or_else(|_| panic!("Error in parsing i64")),
                     player_name.to_string(),
                     faction_type,
                 ),
@@ -800,7 +837,7 @@ fn parse_info(all_lines: Vec<String>) {
     game.process_kills();
     game.process_structure_kills();
     game.get_commanders();
-    //println!("{:?}", game.players);
+    //println!("{:#?}", game.players);
 }
 
 fn checking_folder(path: String) {
