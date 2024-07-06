@@ -80,19 +80,25 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         all_player_id_search.push(search_for_player(player, pool.clone()));
     }
 
-    //join_all!(all_player_id_search);
-    let player_id_search_output = join_all(all_player_id_search).await;
-
-    println!("{:#?}", player_id_search_output);
+    let mut already_added_steam_ids: HashMap<i64, i32> = HashMap::new();
 
     let match_id = match_id_future.await;
+    let player_id_search_output = join_all(all_player_id_search).await;
+
+    println!("Done waiting for search");
 
     for (&player, query_output) in game.get_player_vec().iter().zip(player_id_search_output) {
         let db_player_id: i32;
         if let Some(id) = query_output {
             db_player_id = id
         } else {
-            db_player_id = insert_into_players(player, pool.clone()).await;
+            match already_added_steam_ids.get(&player.player_id) {
+                Some(&id) => db_player_id = id,
+                None => {
+                    db_player_id = insert_into_players(player, pool.clone()).await;
+                    already_added_steam_ids.insert(player.player_id, db_player_id);
+                }
+            }
         }
 
         if player.is_fps() {
@@ -114,7 +120,9 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         }
     }
 
+    println!("waiting for the inserts");
     join_all(all_insert_matches_player_fps).await;
+    join_all(all_insert_matches_player_commander).await;
 
     Ok(())
 }
@@ -178,11 +186,9 @@ fn elo_rating_commander(elo_list: Vec<i32>, win_list: Vec<bool>, k: i32) -> Vec<
         let mut new_elo: Vec<i32> = Vec::new();
 
         for (p, (&w, r)) in zip!(probability_list, win_list, elo_list) {
-
-            let did_win: f64 = if w {1.0} else {0.0};
-            let new_elo_thing = f64::from(r) + f64::from(k) * 2.0 * (did_win - p/6.0);
+            let did_win: f64 = if w { 1.0 } else { 0.0 };
+            let new_elo_thing = f64::from(r) + f64::from(k) * 2.0 * (did_win - p / 6.0);
             new_elo.push(new_elo_thing as i32);
-
         }
         new_elo
     } else {
@@ -205,7 +211,7 @@ async fn insert_into_players(player: &Player, pool: Pool<Postgres>) -> i32 {
 
     let id = match id_future {
         Ok(id) => id,
-        Err(e) => panic!("Could add player {} due to {e}", {
+        Err(e) => panic!("Could not add player {} due to {e}", {
             player.player_name.to_string()
         }),
     };
@@ -241,12 +247,12 @@ async fn insert_into_matches_players_fps(
         player.points,
         player.death
     )
-    .fetch_one(&pool)
+    .execute(&pool)
     .await;
 
     match id_future {
         Ok(_) => (),
-        Err(e) => panic!("Could add player {} due to {e}", {
+        Err(e) => panic!("Could not add player {} due to {e}", {
             player.player_name.to_string()
         }),
     };
@@ -269,6 +275,18 @@ async fn search_for_player(player: &Player, pool: Pool<Postgres>) -> Option<i32>
     }
 }
 
+fn get_faction_id(faction: &Factions) -> i32 {
+    let faction_id = HashMap::from([
+        (Factions::Alien, 0),
+        (Factions::Centauri, 1),
+        (Factions::Sol, 2),
+        (Factions::Wildlife, 3),
+    ]);
+    *faction_id
+        .get(faction)
+        .unwrap_or_else(|| panic!("Could not find the faction id of the faction"))
+}
+
 async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
     let maps_id = HashMap::from([
         (Maps::NarakaCity, 1),
@@ -282,12 +300,6 @@ async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
         (Modes::CentauriVsSol, 1),
         (Modes::CentauriVsSolVsAlien, 2),
     ]);
-    let faction_id = HashMap::from([
-        (Factions::Alien, 0),
-        (Factions::Centauri, 1),
-        (Factions::Sol, 2),
-        (Factions::Wildlife, 3),
-    ]);
 
     let id_future = sqlx::query!(
         r#"
@@ -298,7 +310,7 @@ async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
         game.get_match_length(),
         modes_id.get(&game.match_type),
         maps_id.get(&game.map),
-        faction_id.get(&game.winning_team)
+        get_faction_id(&game.winning_team)
     )
     .fetch_one(&pool)
     .await;
@@ -331,12 +343,12 @@ async fn insert_into_matches_players_commander(
         db_match_id,
         faction_id.get(&player.faction_type).unwrap(),
     )
-    .fetch_one(&pool)
+    .execute(&pool)
     .await;
 
     match id_future {
         Ok(_) => (),
-        Err(e) => panic!("Could add player {} due to {e}", {
+        Err(e) => panic!("Could not add player {} due to {e}", {
             player.player_name.to_string()
         }),
     };
