@@ -328,8 +328,9 @@ impl Player {
         let all_sum = self.total_unit_kills + self.total_structure_kills + self.death;
         all_sum != 0
     }
-    fn did_win(&mut self, winning_team: Factions) {
-        self.winner = winning_team == self.faction_type;
+    pub fn did_win(&self, winning_team: Factions) -> bool {
+        //self.winner = winning_team == self.faction_type;
+        winning_team == self.faction_type
     }
     fn __str__(&mut self) -> String {
         let player_name = &self.player_name;

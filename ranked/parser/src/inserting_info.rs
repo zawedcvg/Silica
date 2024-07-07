@@ -59,19 +59,13 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
     println!("{}", database_url);
     // Create a connection pool
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(20)
         .connect(&database_url)
         .await?;
 
-    //Entire workflow:
-    //insert the match, dont await directly
-    //first check which players require to be added to the player list
-    //then update/add stuff to matches_players_fps, and matches_commander_fps
-    //
-
     let mut all_player_id_search: Vec<_> = Vec::new();
-    let mut all_insert_matches_player_fps: Vec<_> = Vec::new();
-    let mut all_insert_matches_player_commander: Vec<_> = Vec::new();
+    //let mut all_insert_matches_player_fps: Vec<_> = Vec::new();
+    //let mut all_insert_matches_player_commander: Vec<_> = Vec::new();
 
     let match_id_future = insert_into_match(&game, pool.clone());
 
@@ -84,6 +78,9 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
 
     let match_id = match_id_future.await;
     let player_id_search_output = join_all(all_player_id_search).await;
+    let mut fps_bulk_insert: Vec<_> = Vec::new();
+    let mut commander_bulk_insert: Vec<_> = Vec::new();
+    let mut commander_details_futures: Vec<_> = Vec::new();
 
     println!("Done waiting for search");
 
@@ -102,18 +99,13 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         }
 
         if player.is_fps() {
-            all_insert_matches_player_fps.push(insert_into_matches_players_fps(
-                db_player_id,
-                match_id,
-                player,
-                pool.clone(),
-            ));
+            fps_bulk_insert.push((db_player_id, match_id, player));
         }
 
         if player.is_commander {
-            all_insert_matches_player_commander.push(insert_into_matches_players_commander(
+            commander_bulk_insert.push((db_player_id, match_id, player));
+            commander_details_futures.push(search_for_commander(
                 db_player_id,
-                match_id,
                 player,
                 pool.clone(),
             ));
@@ -121,8 +113,45 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
     }
 
     println!("waiting for the inserts");
-    join_all(all_insert_matches_player_fps).await;
-    join_all(all_insert_matches_player_commander).await;
+
+    let returned_elos = join_all(commander_details_futures).await;
+
+    let mut insert_new_commander: Vec<_> = Vec::new();
+
+    let mut win_list: Vec<_> = Vec::new();
+
+    let mut elo_list = Vec::new();
+    for ((db_player_id, _, player), returned_elo) in zip!(commander_bulk_insert, returned_elos) {
+        match returned_elo {
+            Some(elo) => {
+                elo_list.push(elo);
+                win_list.push(player.did_win(game.winning_team));
+            }
+            None => {
+                insert_new_commander.push(insert_into_rankings_commander(
+                    db_player_id.to_owned(),
+                    player,
+                    pool.clone(),
+                ));
+                elo_list.push(1000);
+                win_list.push(player.did_win(game.winning_team));
+            }
+        }
+    }
+
+    let new_elos = elo_rating_commander(elo_list, win_list, 30);
+
+    println!("{:?}", new_elos);
+
+    let bulk_fps_insert_future =
+        bulk_insert_into_matches_players_fps(fps_bulk_insert, pool.clone());
+    let bulk_commander_insert_future =
+        bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone());
+
+    update_commander_elo(&new_elos, &commander_bulk_insert, pool.clone()).await;
+
+    bulk_fps_insert_future.await;
+    bulk_commander_insert_future.await;
 
     Ok(())
 }
@@ -154,7 +183,6 @@ fn elo_rating_commander(elo_list: Vec<i32>, win_list: Vec<bool>, k: i32) -> Vec<
         }
         new_elo.push(new_elo_ra as i32);
         new_elo.push(new_elo_rb as i32);
-        println!("{:#?}", new_elo);
         new_elo
     } else if elo_list.len() == 2 {
         let r_a = elo_list[0];
@@ -173,7 +201,6 @@ fn elo_rating_commander(elo_list: Vec<i32>, win_list: Vec<bool>, k: i32) -> Vec<
         }
         new_elo.push(new_elo_ra as i32);
         new_elo.push(new_elo_rb as i32);
-        println!("{:#?}", new_elo);
         new_elo
     } else if elo_list.len() == 3 {
         let r_a = elo_list[0];
@@ -216,6 +243,44 @@ async fn insert_into_players(player: &Player, pool: Pool<Postgres>) -> i32 {
         }),
     };
     id.id
+}
+
+async fn bulk_insert_into_matches_players_fps(
+    to_insert_thing: Vec<(i32, i32, &Player)>,
+    pool: Pool<Postgres>,
+) {
+    //println!("{:?}", to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>());
+    //println!("{:?}", to_insert_thing.iter().map(|a| a.1).collect::<Vec<i32>>());
+    println!(
+        "{:?}",
+        to_insert_thing
+            .iter()
+            .map(|a| get_faction_id(&a.2.faction_type))
+            .collect::<Vec<i32>>()
+    );
+    let id_future = sqlx::query(
+        r#"
+        INSERT INTO matches_players_fps ( player_id, match_id, faction_id, tier_one_kills, tier_two_kills, tier_three_kills, tier_one_structures_destroyed, tier_two_structures_destroyed, tier_three_structures_destroyed, total_points, deaths )
+        SELECT * FROM UNNEST( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 )
+        "#)
+        .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.1).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| get_faction_id(&a.2.faction_type)).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[0]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[1]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[2]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[0]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[1]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[2]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.points).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.death).collect::<Vec<i32>>())
+    .execute(&pool)
+    .await;
+
+    match id_future {
+        Ok(_) => (),
+        Err(e) => panic!("Could not add player due to {e}"),
+    };
 }
 
 async fn insert_into_matches_players_fps(
@@ -271,6 +336,29 @@ async fn search_for_player(player: &Player, pool: Pool<Postgres>) -> Option<i32>
 
     match id_future {
         Ok(id) => Some(id.id),
+        Err(_) => None,
+    }
+}
+
+async fn search_for_commander(
+    db_player_id: i32,
+    player: &Player,
+    pool: Pool<Postgres>,
+) -> Option<i32> {
+    let id_future = sqlx::query!(
+        r#"
+        SELECT * FROM rankings_commander
+        WHERE player_id=$1
+        AND faction_id=$2
+        "#,
+        db_player_id,
+        get_faction_id(&player.faction_type)
+    )
+    .fetch_one(&pool)
+    .await;
+
+    match id_future {
+        Ok(id) => Some(id.ELO),
         Err(_) => None,
     }
 }
@@ -351,5 +439,89 @@ async fn insert_into_matches_players_commander(
         Err(e) => panic!("Could not add player {} due to {e}", {
             player.player_name.to_string()
         }),
+    };
+}
+
+async fn insert_into_rankings_commander(db_player_id: i32, player: &Player, pool: Pool<Postgres>) {
+    let id_future = sqlx::query!(
+        r#"
+        INSERT INTO rankings_commander ( player_id, faction_id, wins, "ELO" )
+        VALUES ( $1, $2, $3, $4 )
+        "#,
+        db_player_id,
+        get_faction_id(&player.faction_type),
+        0,
+        1000,
+    )
+    .execute(&pool)
+    .await;
+
+    match id_future {
+        Ok(_) => (),
+        Err(e) => panic!(
+            "Could not add player {} to rankings_commander due to {e}",
+            { player.player_name.to_string() }
+        ),
+    };
+}
+
+async fn bulk_insert_into_matches_players_commander(
+    to_insert_thing: &Vec<(i32, i32, &Player)>,
+    pool: Pool<Postgres>,
+) {
+    let id_future = sqlx::query(
+        r#"
+        INSERT INTO matches_players_commander ( player_id, match_id, faction_id )
+        SELECT * FROM UNNEST( $1, $2, $3 )
+        "#,
+    )
+    .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
+    .bind(to_insert_thing.iter().map(|a| a.1).collect::<Vec<i32>>())
+    .bind(
+        to_insert_thing
+            .iter()
+            .map(|a| get_faction_id(&a.2.faction_type))
+            .collect::<Vec<i32>>(),
+    )
+    .execute(&pool)
+    .await;
+
+    match id_future {
+        Ok(_) => (),
+        Err(e) => panic!("Could not add commanders due to {e}"),
+    };
+}
+
+async fn update_commander_elo(
+    new_elos: &Vec<i32>,
+    to_insert_thing: &Vec<(i32, i32, &Player)>,
+    pool: Pool<Postgres>,
+) {
+    let id_future = sqlx::query(
+        r#"
+        UPDATE rankings_commander
+        SET "ELO" = u.new_elo
+        FROM (
+            SELECT unnest($1::integer[]) AS new_elo,
+            unnest($2::integer[]) AS pid,
+            unnest($3::integer[]) AS fid
+            ) AS u
+        WHERE player_id = u.pid AND faction_id = u.fid
+        "#,
+    )
+    .bind(new_elos)
+    .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
+    .bind(
+        to_insert_thing
+            .iter()
+            .map(|a| get_faction_id(&a.2.faction_type))
+            .collect::<Vec<i32>>(),
+    )
+    .execute(&pool)
+    .await;
+
+    match id_future {
+        Ok(_) => (),
+        Err(e) => panic!("Could not add commanders due to {e}"),
     };
 }
