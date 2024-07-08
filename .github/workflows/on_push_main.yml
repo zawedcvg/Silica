@@ -20,4 +20,3 @@ jobs:
           SRC_DIR: ./ranked/parser           # Relative path to the src dir (directory with Cargo.toml in) from root of project
         with:
           RUSTTARGET: ${{ matrix.target }}
-          EXTRA_FILES: "README.md LICENSE"
