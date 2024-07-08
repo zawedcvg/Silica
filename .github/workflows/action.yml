@@ -5,8 +5,8 @@ jobs:
   test:
     name: cargo build target
     runs-on: ubuntu-latest
-    working_directory: ./ranked/parser
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        working_directory: ./ranked/parser
       - run: cargo build
