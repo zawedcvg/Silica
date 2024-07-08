@@ -11,6 +11,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: |
-        cargo sqlx prepare -- --all-targets --all-features
-        cargo build
+          cargo sqlx prepare -- --all-targets --all-features
+          cargo build
         working-directory: ./ranked/parser
