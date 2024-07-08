@@ -47,7 +47,6 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
     let match_id = match_id_future.await;
 
     let bulk_search_players = bulk_search_future.await;
-    println!("done searching at {:?}", now.elapsed());
 
     for (&player, query_output) in game.get_player_vec().iter().zip(bulk_search_players) {
         let db_player_id: i32;
@@ -77,15 +76,12 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         }
     }
 
-    println!("done sending stuff for inserts at {:?}", now.elapsed());
 
     let mut insert_new_commander: Vec<_> = Vec::new();
 
     let mut win_list: Vec<_> = Vec::new();
 
     let returned_elos = join_all(commander_details_futures).await;
-
-    println!("{:?} done waiting for elos ", now.elapsed());
 
     let mut elo_list = Vec::new();
     for ((db_player_id, _, player), returned_elo) in zip!(commander_bulk_insert, returned_elos) {
@@ -116,13 +112,10 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone());
 
     update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).await;
-    println!("{:?} updating the elos", now.elapsed());
 
     bulk_fps_insert_future.await;
     bulk_commander_insert_future.await;
     join_all(insert_new_commander).await;
-
-    println!("{:?} at the end", now.elapsed());
 
     Ok(())
 }

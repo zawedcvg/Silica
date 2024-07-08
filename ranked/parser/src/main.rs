@@ -5,5 +5,5 @@ use crate::parser::checking_folder;
 
 fn main() {
     let game = checking_folder("/home/neeladri/Silica/ranked/log_folder/".to_string());
-    inserting_info(game);
+    let _ = inserting_info(game);
 }
