@@ -13,6 +13,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: |
           cargo install sqlx-cli
+        working-directory: ./ranked/parser
+      - run: |
           cargo sqlx prepare -- --all-targets --all-features
           cargo build
         working-directory: ./ranked/parser
