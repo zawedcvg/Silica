@@ -12,14 +12,11 @@ jobs:
         target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
       - uses: actions/checkout@master
-        with:
-          path: ./ranked/parser
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
-        with:
-          path: ./ranked/parser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
+        working-directory: ./ranked/parser
