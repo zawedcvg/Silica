@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [refactor_rust]
+    branches: [main, refactor_rust]
 
 jobs:
   release:
@@ -11,7 +11,9 @@ jobs:
       matrix:
         target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
-      - uses: actions/checkout@refactor_rust
+      - uses: actions/checkout@master
+        with:
+          ref: refactor_rust
       - name: Change directory to ./ranked/parser
         run: cd ./ranked/parser
       - name: Compile and release
