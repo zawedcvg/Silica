@@ -15,6 +15,7 @@ jobs:
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
         env:
+          DATABASE_URL: ${{secrets.DATABASE_URL}}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SRC_DIR: ./ranked/parser           # Relative path to the src dir (directory with Cargo.toml in) from root of project
         with:
