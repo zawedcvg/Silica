@@ -1,45 +1,11 @@
 use crate::parser::{Factions, Game, Maps, Modes, Player};
 use futures::future::join_all;
-use sqlx::{Execute, QueryBuilder};
-
 //make stuff into a transaction since plan is to add multiple servers.
-
-use tokio_stream::StreamExt;
-
-use tokio::task::JoinSet;
-
 use dotenv::dotenv;
 use sqlx::postgres::{PgPoolOptions, Postgres};
-use sqlx::prelude::FromRow;
 use sqlx::Pool;
 use std::collections::HashMap;
 use std::env;
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, FromRow)]
-struct CommanderEloRecord {
-    username: String,
-    faction: String,
-    ELO: i32,
-}
-
-#[derive(Serialize, Deserialize, FromRow)]
-struct FpsRankingTotalRecord {
-    username: String,
-    faction: String,
-    total: i64,
-    num_matches: i64,
-    avg: i64,
-}
-
-#[derive(Serialize, Deserialize, Debug, FromRow)]
-struct FpsRankingAverageRecord {
-    username: String,
-    faction: String,
-    avg: i64,
-    num_matches: i64,
-}
 
 macro_rules! zip {
     ($x: expr) => ($x);
@@ -64,8 +30,6 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         .await?;
 
     let mut all_player_id_search: Vec<_> = Vec::new();
-    //let mut all_insert_matches_player_fps: Vec<_> = Vec::new();
-    //let mut all_insert_matches_player_commander: Vec<_> = Vec::new();
 
     let match_id_future = insert_into_match(&game, pool.clone());
 
@@ -139,7 +103,7 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         }
     }
 
-    let new_elos = elo_rating_commander(elo_list, win_list, 30);
+    let new_elos = elo_rating_commander(elo_list, &win_list, 30);
 
     println!("{:?}", new_elos);
 
@@ -148,7 +112,7 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
     let bulk_commander_insert_future =
         bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone());
 
-    update_commander_elo(&new_elos, &commander_bulk_insert, pool.clone()).await;
+    update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).await;
 
     bulk_fps_insert_future.await;
     bulk_commander_insert_future.await;
@@ -161,51 +125,41 @@ fn probability(rating1: i32, rating2: i32) -> f64 {
     1.0 * 1.0 / (1.0 + 1.0 * base.powf(1.0 * (f64::from(rating1 - rating2) / 400.0)))
 }
 
-fn elo_rating_commander(elo_list: Vec<i32>, win_list: Vec<bool>, k: i32) -> Vec<i32> {
+fn elo_rating_commander(elo_list: Vec<i32>, win_list: &[bool], k: i32) -> Vec<i32> {
     //refactor this entire thing. lot of duplicated code
     let mut new_elo: Vec<i32> = Vec::new();
     if elo_list.is_empty() {
         new_elo
-    } else if elo_list.len() == 1 {
+    } else if elo_list.len() < 3 {
         let r_a = elo_list[0];
-        let r_b = 1000;
-        let p_a = probability(r_a, r_b);
-        let p_b = probability(r_b, r_a);
+
+        let r_b = if elo_list.len() == 1 {
+            1000
+        } else {
+            elo_list[1]
+        };
+        let p_b_win = probability(r_a, r_b);
+        let p_a_win = probability(r_b, r_a);
         let new_elo_ra: f64;
         let new_elo_rb: f64;
 
         if win_list[0] {
-            new_elo_ra = f64::from(r_a) + f64::from(k) * (1.0 - p_a);
-            new_elo_rb = f64::from(r_b) + f64::from(k) * (0.0 - p_b);
+            new_elo_ra = f64::from(r_a) + f64::from(k) * (1.0 - p_a_win);
+            new_elo_rb = f64::from(r_b) + f64::from(k) * (0.0 - p_b_win);
         } else {
-            new_elo_ra = f64::from(r_a) + f64::from(k) * (0.0 - p_a);
-            new_elo_rb = f64::from(r_b) + f64::from(k) * (1.0 - p_b);
+            new_elo_ra = f64::from(r_a) + f64::from(k) * (0.0 - p_a_win);
+            new_elo_rb = f64::from(r_b) + f64::from(k) * (1.0 - p_b_win);
         }
-        new_elo.push(new_elo_ra as i32);
-        new_elo.push(new_elo_rb as i32);
-        new_elo
-    } else if elo_list.len() == 2 {
-        let r_a = elo_list[0];
-        let r_b = elo_list[1];
-        let p_a = probability(r_a, r_b);
-        let p_b = probability(r_b, r_a);
-        let new_elo_ra: f64;
-        let new_elo_rb: f64;
 
-        if win_list[0] {
-            new_elo_ra = f64::from(r_a) + f64::from(k) * (1.0 - p_a);
-            new_elo_rb = f64::from(r_b) + f64::from(k) * (0.0 - p_b);
-        } else {
-            new_elo_ra = f64::from(r_a) + f64::from(k) * (0.0 - p_a);
-            new_elo_rb = f64::from(r_b) + f64::from(k) * (1.0 - p_b);
-        }
         new_elo.push(new_elo_ra as i32);
-        new_elo.push(new_elo_rb as i32);
+        if elo_list.len() == 2 {
+            new_elo.push(new_elo_rb as i32);
+        }
         new_elo
     } else if elo_list.len() == 3 {
         let r_a = elo_list[0];
         let r_b = elo_list[1];
-        let r_c = elo_list[1];
+        let r_c = elo_list[2];
         let mut probability_list: [f64; 3] = [0.0, 0.0, 0.0];
         probability_list[0] = probability(r_a, r_b) + probability(r_a, r_c);
         probability_list[1] = probability(r_b, r_a) + probability(r_b, r_c);
@@ -249,15 +203,6 @@ async fn bulk_insert_into_matches_players_fps(
     to_insert_thing: Vec<(i32, i32, &Player)>,
     pool: Pool<Postgres>,
 ) {
-    //println!("{:?}", to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>());
-    //println!("{:?}", to_insert_thing.iter().map(|a| a.1).collect::<Vec<i32>>());
-    println!(
-        "{:?}",
-        to_insert_thing
-            .iter()
-            .map(|a| get_faction_id(&a.2.faction_type))
-            .collect::<Vec<i32>>()
-    );
     let id_future = sqlx::query(
         r#"
         INSERT INTO matches_players_fps ( player_id, match_id, faction_id, tier_one_kills, tier_two_kills, tier_three_kills, tier_one_structures_destroyed, tier_two_structures_destroyed, tier_three_structures_destroyed, total_points, deaths )
@@ -466,7 +411,7 @@ async fn insert_into_rankings_commander(db_player_id: i32, player: &Player, pool
 }
 
 async fn bulk_insert_into_matches_players_commander(
-    to_insert_thing: &Vec<(i32, i32, &Player)>,
+    to_insert_thing: &[(i32, i32, &Player)],
     pool: Pool<Postgres>,
 ) {
     let id_future = sqlx::query(
@@ -493,18 +438,20 @@ async fn bulk_insert_into_matches_players_commander(
 }
 
 async fn update_commander_elo(
-    new_elos: &Vec<i32>,
-    to_insert_thing: &Vec<(i32, i32, &Player)>,
+    new_elos: &[i32],
+    to_insert_thing: &[(i32, i32, &Player)],
+    win_list: &[bool],
     pool: Pool<Postgres>,
 ) {
     let id_future = sqlx::query(
         r#"
         UPDATE rankings_commander
-        SET "ELO" = u.new_elo
+        SET "ELO" = u.new_elo, wins=wins+u.is_win
         FROM (
             SELECT unnest($1::integer[]) AS new_elo,
             unnest($2::integer[]) AS pid,
-            unnest($3::integer[]) AS fid
+            unnest($3::integer[]) AS fid,
+            unnest($4::integer[]) AS is_win
             ) AS u
         WHERE player_id = u.pid AND faction_id = u.fid
         "#,
@@ -515,6 +462,12 @@ async fn update_commander_elo(
         to_insert_thing
             .iter()
             .map(|a| get_faction_id(&a.2.faction_type))
+            .collect::<Vec<i32>>(),
+    )
+    .bind(
+        win_list
+            .iter()
+            .map(|&x| if x { 1 } else { 0 })
             .collect::<Vec<i32>>(),
     )
     .execute(&pool)
