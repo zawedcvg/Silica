@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [refactor_rust]
+    branches: [main, refactor_rust]
 
 jobs:
   release:
