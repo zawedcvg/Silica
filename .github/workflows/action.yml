@@ -10,7 +10,7 @@ jobs:
       SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - run: |
           cargo install sqlx-cli
         working-directory: ./ranked/parser
