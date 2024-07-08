@@ -8,5 +8,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        env: ${{secrets.DATABASE_URL}}
       - run: cargo build
         working-directory: ./ranked/parser
