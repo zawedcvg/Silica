@@ -10,5 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build
+      - run: |
+        cargo sqlx prepare -- --all-targets --all-features
+        cargo build
         working-directory: ./ranked/parser
