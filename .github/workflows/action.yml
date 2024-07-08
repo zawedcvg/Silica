@@ -15,6 +15,6 @@ jobs:
           cargo install sqlx-cli
         working-directory: ./ranked/parser
       - run: |
-          cargo sqlx prepare -- --all-targets --all-features
+          cargo sqlx prepare -- --all-targets --all-features -Z macro-backtrace
           cargo build
         working-directory: ./ranked/parser
