@@ -12,14 +12,11 @@ jobs:
         target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
       - uses: actions/checkout@master
-        with:
-          ref: refactor_rust
-      - name: Change directory to ./ranked/parser
-        run: cd ./ranked/parser
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SRC_DIR: ./ranked/parser           # Relative path to the src dir (directory with Cargo.toml in) from root of project
         with:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
