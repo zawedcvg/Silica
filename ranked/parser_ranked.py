@@ -493,6 +493,11 @@ def parse_info(match_log_info):
     process_structure_kills(all_essential_info, all_players)
     process_unit_kills(all_essential_info, all_players)
 
+    # print(all_players)
+    # print(all_players.values())
+    # for i in all_players.values():
+        # print(i)
+
     _ = get_commanders(match_log_info, None, all_players)
     return match_type_info, winning_team, all_players
 
@@ -520,5 +525,5 @@ def checking(file_name):
     return parse_info(match_log_info)
 
 if __name__ == "__main__":
-    # checking_all(sys.argv[1])
-    print(checking_folder(sys.argv[1]))
+    (checking_folder(sys.argv[1]))
+    print(elo_rating_commander([1460, 1000], [1, 0]));
