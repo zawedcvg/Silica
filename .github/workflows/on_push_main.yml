@@ -16,6 +16,8 @@ jobs:
           path: ./ranked/parser
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
+        with:
+          path: ./ranked/parser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
