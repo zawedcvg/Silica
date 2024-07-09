@@ -29,9 +29,6 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         .connect(&database_url)
         .await?;
 
-    use std::time::Instant;
-    let now = Instant::now();
-
     let bulk_search_future = bulk_search_player_ids(game.get_player_vec(), pool.clone());
 
     let match_id_future = insert_into_match(&game, pool.clone());
@@ -225,7 +222,7 @@ async fn bulk_insert_into_matches_players_fps(
     };
 }
 
-async fn insert_into_matches_players_fps(
+async fn _insert_into_matches_players_fps(
     db_player_id: i32,
     db_match_id: i32,
     player: &Player,
@@ -265,7 +262,7 @@ async fn insert_into_matches_players_fps(
     };
 }
 
-async fn search_for_player(player: &Player, pool: Pool<Postgres>) -> Option<i32> {
+async fn _search_for_player(player: &Player, pool: Pool<Postgres>) -> Option<i32> {
     let id_future = sqlx::query!(
         r#"
         SELECT id FROM players
@@ -352,7 +349,7 @@ async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
     id.id
 }
 
-async fn insert_into_matches_players_commander(
+async fn _insert_into_matches_players_commander(
     db_player_id: i32,
     db_match_id: i32,
     player: &Player,

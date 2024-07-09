@@ -354,7 +354,7 @@ impl Player {
     }
 }
 
-fn is_valid_faction_type(match_type: Modes, faction_type: Factions) -> bool {
+fn _is_valid_faction_type(match_type: Modes, faction_type: Factions) -> bool {
     match match_type {
         Modes::SolVsAlien => faction_type != Factions::Centauri,
         Modes::CentauriVsSol => faction_type != Factions::Alien,
@@ -390,7 +390,7 @@ impl Game {
             .unwrap_or_else(|e| panic!("Time couldnt be converted to i32 due to {e}"))
     }
 
-    fn get_playing_factions(&self) -> Vec<Factions> {
+    fn _get_playing_factions(&self) -> Vec<Factions> {
         match self.match_type {
             Modes::SolVsAlien => [Factions::Sol, Factions::Alien].to_vec(),
             Modes::CentauriVsSol => [Factions::Centauri, Factions::Sol].to_vec(),

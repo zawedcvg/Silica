@@ -1,22 +1,20 @@
 pub mod inserting_info;
 use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io::{self};
 pub mod parser;
 use crate::inserting_info::inserting_info;
 use crate::parser::checking_folder;
 use std::env;
 
 #[cfg(unix)]
-use {
-    std::os::unix::io::AsRawFd,
-};
+use std::os::unix::io::AsRawFd;
 
 #[cfg(windows)]
 use {
     std::os::windows::io::AsRawHandle,
-    winapi::um::processenv::SetStdHandle,
-    winapi::um::winbase::{STD_OUTPUT_HANDLE, STD_ERROR_HANDLE},
     winapi::um::handleapi::INVALID_HANDLE_VALUE,
+    winapi::um::processenv::SetStdHandle,
+    winapi::um::winbase::{STD_ERROR_HANDLE, STD_OUTPUT_HANDLE},
 };
 
 fn main() {
@@ -71,26 +69,37 @@ fn main() {
         unsafe {
             let stdout_handle = stdout_file.as_raw_handle();
             if stdout_handle == INVALID_HANDLE_VALUE as _ {
-                panic!("Invalid handle for stdout.txt: {}", io::Error::last_os_error());
+                panic!(
+                    "Invalid handle for stdout.txt: {}",
+                    io::Error::last_os_error()
+                );
             }
             if SetStdHandle(STD_OUTPUT_HANDLE, stdout_handle as _) == 0 {
-                panic!("Failed to set stdout handle: {}", io::Error::last_os_error());
+                panic!(
+                    "Failed to set stdout handle: {}",
+                    io::Error::last_os_error()
+                );
             }
         }
 
         // Redirect stderr on Windows
         unsafe {
             let stderr_handle = stderr_file.as_raw_handle();
-            if stderr_handle == INVALID_HANDLE_VALUE as _{
-                panic!("Invalid handle for stderr.txt: {}", io::Error::last_os_error());
+            if stderr_handle == INVALID_HANDLE_VALUE as _ {
+                panic!(
+                    "Invalid handle for stderr.txt: {}",
+                    io::Error::last_os_error()
+                );
             }
             if SetStdHandle(STD_ERROR_HANDLE, stderr_handle as _) == 0 {
-                panic!("Failed to set stderr handle: {}", io::Error::last_os_error());
+                panic!(
+                    "Failed to set stderr handle: {}",
+                    io::Error::last_os_error()
+                );
             }
         }
     }
     let args: Vec<String> = env::args().collect();
     let game = checking_folder(&args[1]);
     let _ = inserting_info(game);
-
 }
