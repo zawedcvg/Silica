@@ -1,22 +1,91 @@
+#on:
+  #push:
+    #branches: [main, refactor_rust]
+
+#jobs:
+  #release:
+    #name: release ${{ matrix.target }}
+    #runs-on: ubuntu-latest
+    #strategy:
+      #fail-fast: false
+      #matrix:
+        #target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+    #steps:
+      #- uses: actions/checkout@master
+      #- name: Compile and release
+        #uses: rust-build/rust-build.action@v1.4.5
+        #env:
+          #DATABASE_URL: ${{secrets.DATABASE_URL}}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #SRC_DIR: ./ranked/parser           # Relative path to the src dir (directory with Cargo.toml in) from root of project
+        #with:
+          #RUSTTARGET: ${{ matrix.target }}
+          #UPLOAD_MODE: none
+name: Auto release/check
+
 on:
   push:
-    branches: [main, refactor_rust]
+    branches: [ "main", "refactor_rust" ]
+  pull_request:
+    branches: [ "main" ]
+
+
+env:
+  DATABASE_URL: ${{secrets.DATABASE_URL}}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SRC_DIR: ./ranked/parser           # Relative path to the src dir (directory with Cargo.toml in) from root of project
 
 jobs:
-  release:
-    name: release ${{ matrix.target }}
+
+  create-development-build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+
     steps:
       - uses: actions/checkout@master
-      - name: Compile and release
+
+      - name: Build
+        run: cargo build --verbose
+        working-directory: ./ranked/parser
+      #- name: Run tests
+        #run: cargo test --verbose
+
+      - name: Compile
+        id: compile
         uses: rust-build/rust-build.action@v1.4.5
-        env:
-          DATABASE_URL: ${{secrets.DATABASE_URL}}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SRC_DIR: ./ranked/parser           # Relative path to the src dir (directory with Cargo.toml in) from root of project
         with:
-          RUSTTARGET: ${{ matrix.target }}
+          RUSTTARGET: x86_64-pc-windows-gnu
+          UPLOAD_MODE: none
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Binary
+          path: |
+            ${{ steps.compile.outputs.BUILT_ARCHIVE }}
+            ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+
+      - name: Compile
+        id: compile2
+        uses: rust-build/rust-build.action@v1.4.5
+        with:
+          RUSTTARGET: x86_64-unknown-linux-musl
+          UPLOAD_MODE: none
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Binary
+          path: |
+            ${{ steps.compile2.outputs.BUILT_ARCHIVE }}
+            ${{ steps.compile2.outputs.BUILT_CHECKSUM }}
+
+      - name: Release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Development Build"
+          files: |
+            ${{ steps.compile.outputs.BUILT_ARCHIVE }}
+            ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+            ${{ steps.compile2.outputs.BUILT_ARCHIVE }}
+            ${{ steps.compile2.outputs.BUILT_CHECKSUM }}
