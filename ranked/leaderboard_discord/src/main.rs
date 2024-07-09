@@ -68,10 +68,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let query_fps_average = r#"
         SELECT p.username, f.name as faction, SUM(rc.total_points)/COUNT(rc.total_points) as avg, COUNT(rc.total_points) as num_matches
-        FROM players p, factions f, matches_players_fps rc 
-        WHERE rc.player_id = p.id AND f.id = rc.faction_id AND rc.total_points <> 0 
-        GROUP BY (f.name, p.username) 
-        HAVING COUNT(rc.total_points) > 1
+        FROM players p, factions f, matches_players_fps rc
+        WHERE rc.player_id = p.id AND f.id = rc.faction_id AND rc.total_points <> 0
+        GROUP BY (f.name, p.username)
+        HAVING COUNT(rc.total_points) > 10
         ORDER BY SUM(rc.total_points)/COUNT(rc.total_points) DESC;
         "#;
 
