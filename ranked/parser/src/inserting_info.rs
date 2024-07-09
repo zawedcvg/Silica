@@ -29,8 +29,6 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
         .connect(&database_url)
         .await?;
 
-
-
     use std::time::Instant;
     let now = Instant::now();
 
@@ -75,7 +73,6 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
             ));
         }
     }
-
 
     let mut insert_new_commander: Vec<_> = Vec::new();
 
@@ -302,7 +299,6 @@ async fn search_for_commander(
     .fetch_one(&pool)
     .await;
 
-
     match id_future {
         Ok(id) => Some(id.ELO),
         Err(_) => None,
@@ -495,7 +491,6 @@ async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> 
     )
     .fetch_all(&pool)
     .await;
-
 
     match all_search_ids {
         Ok(all_searched) => all_searched
