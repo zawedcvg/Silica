@@ -837,7 +837,7 @@ fn parse_info(all_lines: Vec<String>) -> Game {
     //println!("{:#?}", game.players);
 }
 
-pub fn checking_folder(path: String) -> Game {
+pub fn checking_folder(path: &String) -> Game {
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(_) => panic!("Failed to read directory"),
