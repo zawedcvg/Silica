@@ -1,10 +1,12 @@
 use chrono::{prelude::*, TimeDelta};
 use rayon::prelude::*;
 use regex::Regex;
+use rev_lines::RevLines;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -425,9 +427,13 @@ impl Game {
 
         let mut data_structure = CommanderDataStructure::default();
 
-        let req_lines: Vec<_> = self.current_match.iter().filter(|x| {
-            remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
-        }).collect();
+        let req_lines: Vec<_> = self
+            .current_match
+            .iter()
+            .filter(|x| {
+                remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
+            })
+            .collect();
 
         for line in req_lines {
             if line.contains(DISCONNECTED) {
@@ -445,8 +451,7 @@ impl Game {
                 });
 
                 if data_structure.is_current_commander(faction_type, player_id) {
-                    let byte_matched_datetime_range =
-                        get_byte_indices(line, DATETIME_RANGE);
+                    let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
 
                     let time_end = match NaiveDateTime::parse_from_str(
                         line[byte_matched_datetime_range].trim(),
@@ -466,8 +471,7 @@ impl Game {
                 else {
                     continue;
                 };
-                let byte_matched_datetime_range =
-                    get_byte_indices(line, DATETIME_RANGE);
+                let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
 
                 let role_change_time = match NaiveDateTime::parse_from_str(
                     line[byte_matched_datetime_range].trim(),
@@ -568,39 +572,59 @@ impl Game {
         }
     }
 
-    fn get_current_match(&mut self, all_lines: &[String]) {
+    fn get_current_match(&mut self, mut all_lines: Vec<PathBuf>) {
         let mut did_find_world_win = false;
         //TODO improve this part
         let mut end_index = 0;
-        for (i, value) in all_lines.iter().rev().enumerate() {
-            let byte_matched_round_end_range = get_byte_indices(value, ROUND_END_RANGE);
-            let byte_matched_round_start_range =
-                get_byte_indices(value, ROUND_START_RANGE);
-            let byte_matched_datetime_range = get_byte_indices(value, DATETIME_RANGE);
-            if value[byte_matched_round_end_range].trim() == ROUND_END {
-                self.end_time = match NaiveDateTime::parse_from_str(
-                    value[byte_matched_datetime_range].trim(),
-                    "%m/%d/%Y - %H:%M:%S",
-                ) {
-                    Ok(datetime) => datetime,
+
+        let mut current_match = Vec::new();
+
+        while let Some(file) = all_lines.pop() {
+            let reader = match File::open(file) {
+                Ok(open_file) => RevLines::new(open_file),
+                Err(e) => panic!("Error in opening the log file due to: {e}"),
+            };
+
+            for (i, option_line) in reader.enumerate() {
+                let line = match option_line {
+                    Ok(line) => line,
                     Err(e) => {
-                        panic!("Error in trying to parse round start time: {e}")
+                        eprintln!("Cannot read line due to {e}");
+                        continue;
                     }
                 };
-                did_find_world_win = true;
-                end_index = all_lines.len() - i;
-            } else if value[byte_matched_round_start_range].trim() == ROUND_START
-                && did_find_world_win
-            {
-                self.start_time = match NaiveDateTime::parse_from_str(
-                    value[DATETIME_RANGE].trim(),
-                    "%m/%d/%Y - %H:%M:%S",
-                ) {
-                    Ok(datetime) => datetime,
-                    Err(e) => panic!("Error in trying to parse round start time {e}"),
-                };
-                self.current_match = all_lines[all_lines.len() - i - 1..end_index].to_vec();
-                return;
+                let byte_matched_round_end_range = get_byte_indices(&line, ROUND_END_RANGE);
+                let byte_matched_round_start_range = get_byte_indices(&line, ROUND_START_RANGE);
+                let byte_matched_datetime_range = get_byte_indices(&line, DATETIME_RANGE);
+                if line[byte_matched_round_end_range].trim() == ROUND_END {
+                    self.end_time = match NaiveDateTime::parse_from_str(
+                        line[byte_matched_datetime_range].trim(),
+                        "%m/%d/%Y - %H:%M:%S",
+                    ) {
+                        Ok(datetime) => datetime,
+                        Err(e) => {
+                            panic!("Error in trying to parse round start time: {e}")
+                        }
+                    };
+                    did_find_world_win = true;
+                    current_match.push(line);
+                } else if did_find_world_win {
+                    current_match.push(line.clone());
+                    if line[byte_matched_round_start_range].trim() == ROUND_START {
+                        self.start_time = match NaiveDateTime::parse_from_str(
+                            line[DATETIME_RANGE].trim(),
+                            "%m/%d/%Y - %H:%M:%S",
+                        ) {
+                            Ok(datetime) => datetime,
+                            Err(e) => panic!("Error in trying to parse round start time {e}"),
+                        };
+                        current_match.reverse();
+                        self.current_match = current_match;
+                        return;
+                    }
+                    //self.current_match = current_match.reverse();
+                    //return;
+                }
             }
         }
     }
@@ -724,38 +748,45 @@ impl Game {
         }
     }
 
-    fn get_current_map(&mut self, all_lines: &[String]) {
-        let req_info = all_lines
-            .iter()
-            .filter(|x| remove_chat_messages(x))
-            .map(|x| remove_date_data(x))
-            .filter(|x| x.contains(LOADING_MAP))
-            .rev();
-
+    fn get_current_map(&mut self, mut all_lines: Vec<PathBuf>) {
         let map_regex = match Regex::new(r#"Loading map "(.*)""#) {
             Ok(map_regex) => map_regex,
             Err(_) => panic!("Error in creating the get_current_map_regex"),
         };
 
-        for required_line in req_info {
-            let map_matched = map_regex.captures(required_line);
-            match map_matched {
-                Some(map) => {
-                    let map_str = map.get(1).unwrap().as_str();
-                    if map_str == "NarakaCity" {
-                        self.map = Maps::NarakaCity
-                    } else if map_str == "MonumentValley" {
-                        self.map = Maps::MonumentValley
-                    } else if map_str == "RiftBasin" {
-                        self.map = Maps::RiftBasin
-                    } else if map_str == "Badlands" {
-                        self.map = Maps::Badlands
-                    } else if map_str == "GreatErg" {
-                        self.map = Maps::GreatErg
+        while let Some(file) = all_lines.pop() {
+            let reader = match File::open(file) {
+                Ok(open_file) => RevLines::new(open_file),
+                Err(e) => panic!("Error in opening the log file due to: {e}"),
+            };
+
+            for option_line in reader {
+                let line = match option_line {
+                    Ok(line) => line,
+                    Err(e) => {
+                        eprintln!("Cannot read line due to {e}");
+                        continue;
                     }
-                    return;
+                };
+                let map_matched = map_regex.captures(&line);
+                match map_matched {
+                    Some(map) => {
+                        let map_str = map.get(1).unwrap().as_str();
+                        if map_str == "NarakaCity" {
+                            self.map = Maps::NarakaCity
+                        } else if map_str == "MonumentValley" {
+                            self.map = Maps::MonumentValley
+                        } else if map_str == "RiftBasin" {
+                            self.map = Maps::RiftBasin
+                        } else if map_str == "Badlands" {
+                            self.map = Maps::Badlands
+                        } else if map_str == "GreatErg" {
+                            self.map = Maps::GreatErg
+                        }
+                        return;
+                    }
+                    None => continue,
                 }
-                None => continue,
             }
         }
     }
@@ -795,7 +826,6 @@ impl Game {
 }
 impl Default for Game {
     fn default() -> Self {
-        //Make this better, ugly for now
         let default_time = NaiveDateTime::default();
         Game {
             start_time: default_time,
@@ -817,35 +847,33 @@ fn remove_chat_messages(line: &str) -> bool {
 
 fn remove_date_data(line: &str) -> &str {
     if line.len() > DATETIME_END {
-        let byte_corrected_datetimeend =
-            get_byte_indices(line, DATETIME_END..line.len());
+        let byte_corrected_datetimeend = get_byte_indices(line, DATETIME_END..line.len());
         &line.trim()[byte_corrected_datetimeend]
     } else {
         ""
     }
 }
 
-fn parse_info(all_lines: Vec<String>) -> Game {
+fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     let now = Instant::now();
     let mut game = Game::default();
-    //maybe change this portion later
-    game.get_current_map(&all_lines);
-    game.get_current_match(&all_lines);
+    //maybe process them separately and do the assignment later
+    game.get_current_map(all_lines.clone());
+    println!("{:?}", game.map);
+    game.get_current_match(all_lines.clone());
     game.get_match_type();
     game.get_winning_team();
     game.get_all_players();
+    //processing kills takes a fairly big portion
     game.process_kills();
     game.process_structure_kills();
+    println!("time elapsed to parse all the info {:?}", now.elapsed());
     game.get_commanders();
-
-
-    println!("{:?}", now.elapsed());
-
     game
-    //println!("{:#?}", game.players);
 }
 
 pub fn checking_folder(path: &String) -> Game {
+    let now = Instant::now();
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(_) => panic!("Failed to read directory"),
@@ -860,34 +888,7 @@ pub fn checking_folder(path: &String) -> Game {
         .filter(|r| r.extension().unwrap_or(OsStr::new("")) == "log")
         .collect();
     log_files.sort();
+    println!("time taken to read all the files {:?}", now.elapsed());
 
-    let now = Instant::now();
-    let all_lines: Vec<String> = log_files
-        .par_iter()
-        .flat_map(|file| {
-            let reader = match File::open(file) {
-                Ok(open_file) => BufReader::new(open_file),
-                Err(e) => panic!("Error in opening the log file due to: {e}"),
-            };
-            reader
-                .lines()
-                .filter_map(|line| {
-                    match line {
-                        Ok(result) => Some(result),
-                        Err(e) => {
-                            println!("Could not read a line due to: {e}");
-                            None // Skip lines that couldn't be read
-                        }
-                    }
-                })
-                .collect::<Vec<_>>() // Collect lines from each file
-        })
-        .collect();
-    println!("{:?}", now.elapsed());
-
-    parse_info(all_lines)
+    parse_info(log_files)
 }
-
-//fn main() {
-//checking_folder("/home/neeladri/Silica/ranked/log_folder/".to_string());
-//}

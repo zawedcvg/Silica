@@ -7,6 +7,8 @@ use sqlx::Pool;
 use std::collections::HashMap;
 use std::env;
 
+const PLAYER_NOT_FOUND: i32 = -1;
+
 macro_rules! zip {
     ($x: expr) => ($x);
     ($x: expr, $($y: expr), +) => (
@@ -45,7 +47,7 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
 
     for (&player, query_output) in game.get_player_vec().iter().zip(bulk_search_players) {
         let db_player_id: i32;
-        if query_output != -1 {
+        if query_output != PLAYER_NOT_FOUND {
             db_player_id = query_output
         } else {
             match already_added_steam_ids.get(&player.player_id) {
@@ -75,6 +77,7 @@ pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>
 
     let mut win_list: Vec<_> = Vec::new();
 
+    //can change this to do a process as we get the details. no need to wait.
     let returned_elos = join_all(commander_details_futures).await;
 
     let mut elo_list = Vec::new();
