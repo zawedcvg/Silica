@@ -1,9 +1,11 @@
 use chrono::{prelude::*, TimeDelta};
+use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::time::Instant;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum Factions {
@@ -14,7 +16,7 @@ pub enum Factions {
     Wildlife,
 }
 
-#[derive(Default, Hash, PartialEq, Eq)]
+#[derive(Default, Hash, PartialEq, Eq, Debug)]
 pub enum Modes {
     #[default]
     SolVsAlien,
@@ -104,6 +106,7 @@ pub struct Player {
     pub winner: bool,
 }
 
+#[derive(Debug)]
 pub struct Game {
     start_time: NaiveDateTime,
     end_time: NaiveDateTime,
@@ -362,7 +365,7 @@ fn _is_valid_faction_type(match_type: Modes, faction_type: Factions) -> bool {
     }
 }
 
-fn get_byte_indices(line: String, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
+fn get_byte_indices(line: &str, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
     let valid_start = line
         .char_indices()
         .nth(range.start)
@@ -422,9 +425,9 @@ impl Game {
 
         let mut data_structure = CommanderDataStructure::default();
 
-        let req_lines = self.current_match.iter().filter(|x| {
+        let req_lines: Vec<_> = self.current_match.iter().filter(|x| {
             remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
-        });
+        }).collect();
 
         for line in req_lines {
             if line.contains(DISCONNECTED) {
@@ -443,7 +446,7 @@ impl Game {
 
                 if data_structure.is_current_commander(faction_type, player_id) {
                     let byte_matched_datetime_range =
-                        get_byte_indices(line.to_string(), DATETIME_RANGE);
+                        get_byte_indices(line, DATETIME_RANGE);
 
                     let time_end = match NaiveDateTime::parse_from_str(
                         line[byte_matched_datetime_range].trim(),
@@ -464,7 +467,7 @@ impl Game {
                     continue;
                 };
                 let byte_matched_datetime_range =
-                    get_byte_indices(line.to_string(), DATETIME_RANGE);
+                    get_byte_indices(line, DATETIME_RANGE);
 
                 let role_change_time = match NaiveDateTime::parse_from_str(
                     line[byte_matched_datetime_range].trim(),
@@ -570,10 +573,10 @@ impl Game {
         //TODO improve this part
         let mut end_index = 0;
         for (i, value) in all_lines.iter().rev().enumerate() {
-            let byte_matched_round_end_range = get_byte_indices(value.to_string(), ROUND_END_RANGE);
+            let byte_matched_round_end_range = get_byte_indices(value, ROUND_END_RANGE);
             let byte_matched_round_start_range =
-                get_byte_indices(value.to_string(), ROUND_START_RANGE);
-            let byte_matched_datetime_range = get_byte_indices(value.to_string(), DATETIME_RANGE);
+                get_byte_indices(value, ROUND_START_RANGE);
+            let byte_matched_datetime_range = get_byte_indices(value, DATETIME_RANGE);
             if value[byte_matched_round_end_range].trim() == ROUND_END {
                 self.end_time = match NaiveDateTime::parse_from_str(
                     value[byte_matched_datetime_range].trim(),
@@ -815,7 +818,7 @@ fn remove_chat_messages(line: &str) -> bool {
 fn remove_date_data(line: &str) -> &str {
     if line.len() > DATETIME_END {
         let byte_corrected_datetimeend =
-            get_byte_indices(line.to_string(), DATETIME_END..line.len());
+            get_byte_indices(line, DATETIME_END..line.len());
         &line.trim()[byte_corrected_datetimeend]
     } else {
         ""
@@ -823,7 +826,9 @@ fn remove_date_data(line: &str) -> &str {
 }
 
 fn parse_info(all_lines: Vec<String>) -> Game {
+    let now = Instant::now();
     let mut game = Game::default();
+    //maybe change this portion later
     game.get_current_map(&all_lines);
     game.get_current_match(&all_lines);
     game.get_match_type();
@@ -832,6 +837,9 @@ fn parse_info(all_lines: Vec<String>) -> Game {
     game.process_kills();
     game.process_structure_kills();
     game.get_commanders();
+
+
+    println!("{:?}", now.elapsed());
 
     game
     //println!("{:#?}", game.players);
@@ -853,19 +861,30 @@ pub fn checking_folder(path: &String) -> Game {
         .collect();
     log_files.sort();
 
-    let mut all_lines: Vec<_> = Vec::new();
-    for file in log_files {
-        let reader = match File::open(file) {
-            Ok(open_file) => BufReader::new(open_file),
-            Err(e) => panic!("Error in opening the log file due to: {e}"),
-        };
-        for line in reader.lines() {
-            match line {
-                Ok(result) => all_lines.push(result),
-                Err(e) => println!("Could not read a line due to: {e}"),
-            }
-        }
-    }
+    let now = Instant::now();
+    let all_lines: Vec<String> = log_files
+        .par_iter()
+        .flat_map(|file| {
+            let reader = match File::open(file) {
+                Ok(open_file) => BufReader::new(open_file),
+                Err(e) => panic!("Error in opening the log file due to: {e}"),
+            };
+            reader
+                .lines()
+                .filter_map(|line| {
+                    match line {
+                        Ok(result) => Some(result),
+                        Err(e) => {
+                            println!("Could not read a line due to: {e}");
+                            None // Skip lines that couldn't be read
+                        }
+                    }
+                })
+                .collect::<Vec<_>>() // Collect lines from each file
+        })
+        .collect();
+    println!("{:?}", now.elapsed());
+
     parse_info(all_lines)
 }
 
