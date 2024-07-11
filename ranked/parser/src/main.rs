@@ -104,7 +104,7 @@ fn main() {
     let now = Instant::now();
     let args: Vec<String> = env::args().collect();
     let game = checking_folder(&args[1]);
-    println!("{:?}", now.elapsed());
+    println!("{:?} time elapsed for everything", now.elapsed());
     //println!("{:#?}", game);
     //let _ = inserting_info(game);
 }

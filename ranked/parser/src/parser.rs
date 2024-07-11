@@ -575,7 +575,6 @@ impl Game {
     fn get_current_match(&mut self, mut all_lines: Vec<PathBuf>) {
         let mut did_find_world_win = false;
         //TODO improve this part
-        let mut end_index = 0;
 
         let mut current_match = Vec::new();
 
@@ -585,7 +584,7 @@ impl Game {
                 Err(e) => panic!("Error in opening the log file due to: {e}"),
             };
 
-            for (i, option_line) in reader.enumerate() {
+            for option_line in reader {
                 let line = match option_line {
                     Ok(line) => line,
                     Err(e) => {
@@ -622,8 +621,6 @@ impl Game {
                         self.current_match = current_match;
                         return;
                     }
-                    //self.current_match = current_match.reverse();
-                    //return;
                 }
             }
         }
@@ -646,11 +643,11 @@ impl Game {
 
     fn process_kills(&mut self) {
         //TODO make it optimized by using normal for loop or something else.
-        let kill_lines = self
-            .current_match
-            .clone()
-            .into_iter()
-            .filter(|line| line.contains(KILLED));
+        //let kill_lines = self
+        //.current_match
+        //.clone()
+        //.into_iter()
+        //.filter(|line| line.contains(KILLED));
 
         let kill_regex = match Regex::new(
             r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
@@ -659,8 +656,12 @@ impl Game {
             Err(e) => panic!("Error in creating the kill regex: {e}"),
         };
 
-        for kill_line in kill_lines {
-            let kill_matches = kill_regex.captures(&kill_line);
+        for kill_line in &self.current_match {
+            if !kill_line.contains(KILLED) {
+                continue;
+            }
+
+            let kill_matches = kill_regex.captures(kill_line);
             let Some((
                 _,
                 [player_name, _, player_id, player_faction, enemy_name, _, enemy_id, enemy_faction, _, _, victim],
@@ -669,38 +670,26 @@ impl Game {
                 continue;
             };
 
-            let faction_type = Game::get_factions(player_faction);
-
-            match player_id.parse::<i64>() {
-                Ok(player_id) => {
-                    let player = self
-                        .players
-                        .entry((player_id, faction_type))
-                        .or_insert_with(|| {
-                            Player::new(player_id, player_name.to_string(), faction_type)
-                        });
-                    player.update_unit_kill(victim);
-                }
-                Err(_) => {
-                    //change this, unnecessary thing
-                    //println!("Can't parse due to {e}");
-                }
+            if let Ok(player_id) = player_id.parse::<i64>() {
+                let faction_type = Game::get_factions(player_faction);
+                let player = self
+                    .players
+                    .entry((player_id, faction_type))
+                    .or_insert_with(|| {
+                        Player::new(player_id, player_name.to_string(), faction_type)
+                    });
+                player.update_unit_kill(victim);
             };
 
-            let enemy_faction_type = Game::get_factions(enemy_faction);
-            match enemy_id.parse::<i64>() {
-                Ok(enemy_id) => {
-                    let enemy_player = self
-                        .players
-                        .entry((enemy_id, enemy_faction_type))
-                        .or_insert_with(|| {
-                            Player::new(enemy_id, enemy_name.to_string(), enemy_faction_type)
-                        });
-                    enemy_player.update_death(victim);
-                }
-                Err(_) => {
-                    //println!("Can't parse due to {e}");
-                }
+            if let Ok(enemy_id) = enemy_id.parse::<i64>() {
+                let enemy_faction_type = Game::get_factions(enemy_faction);
+                let enemy_player = self
+                    .players
+                    .entry((enemy_id, enemy_faction_type))
+                    .or_insert_with(|| {
+                        Player::new(enemy_id, enemy_name.to_string(), enemy_faction_type)
+                    });
+                enemy_player.update_death(victim);
             };
         }
     }
@@ -762,7 +751,12 @@ impl Game {
 
             for option_line in reader {
                 let line = match option_line {
-                    Ok(line) => line,
+                    Ok(line) => {
+                        if !line.contains(LOADING_MAP) {
+                            continue;
+                        }
+                        line
+                    }
                     Err(e) => {
                         eprintln!("Cannot read line due to {e}");
                         continue;
@@ -855,16 +849,17 @@ fn remove_date_data(line: &str) -> &str {
 }
 
 fn parse_info(all_lines: Vec<PathBuf>) -> Game {
-    let now = Instant::now();
     let mut game = Game::default();
     //maybe process them separately and do the assignment later
+    //current map is somehow more timetaking than current match? this is because it has to go
+    //through more lines
     game.get_current_map(all_lines.clone());
-    println!("{:?}", game.map);
     game.get_current_match(all_lines.clone());
     game.get_match_type();
     game.get_winning_team();
     game.get_all_players();
     //processing kills takes a fairly big portion
+    let now = Instant::now();
     game.process_kills();
     game.process_structure_kills();
     println!("time elapsed to parse all the info {:?}", now.elapsed());
