@@ -17,20 +17,11 @@ macro_rules! zip {
     )
 }
 
-#[tokio::main]
-pub async fn inserting_info(game: Game) -> Result<(), Box<dyn std::error::Error>> {
-    // Load environment variables from .env file
-    dotenv().ok();
-
-    // Get the database URL from the environment variable
-    let database_url = env::var("DATABASE_URL").unwrap();
-    println!("{}", database_url);
-    // Create a connection pool
-    let pool = PgPoolOptions::new()
-        .max_connections(10)
-        .connect(&database_url)
-        .await?;
-
+//#[tokio::main]
+pub async fn inserting_info(
+    game: Game,
+    pool: Pool<Postgres>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let bulk_search_future = bulk_search_player_ids(game.get_player_vec(), pool.clone());
 
     let match_id_future = insert_into_match(&game, pool.clone());

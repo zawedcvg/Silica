@@ -767,15 +767,15 @@ impl Game {
                     Some(map) => {
                         let map_str = map.get(1).unwrap().as_str();
                         if map_str == "NarakaCity" {
-                            self.map = Maps::NarakaCity
+                            self.map = Maps::NarakaCity;
                         } else if map_str == "MonumentValley" {
-                            self.map = Maps::MonumentValley
+                            self.map = Maps::MonumentValley;
                         } else if map_str == "RiftBasin" {
-                            self.map = Maps::RiftBasin
+                            self.map = Maps::RiftBasin;
                         } else if map_str == "Badlands" {
-                            self.map = Maps::Badlands
+                            self.map = Maps::Badlands;
                         } else if map_str == "GreatErg" {
-                            self.map = Maps::GreatErg
+                            self.map = Maps::GreatErg;
                         }
                         return;
                     }
