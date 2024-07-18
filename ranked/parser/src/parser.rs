@@ -177,6 +177,7 @@ const TIER_ONE_UNITS: &[&str] = &[
     "HoverBike",
     "Worm",
     "FlakTruck",
+    "Squid",
 ];
 const TIER_TWO_UNITS: &[&str] = &[
     "Behemoth",
@@ -472,7 +473,6 @@ impl Game {
                     continue;
                 };
                 let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
-                println!("{line}");
 
                 let role_change_time = match NaiveDateTime::parse_from_str(
                     line[byte_matched_datetime_range].trim(),
@@ -489,8 +489,13 @@ impl Game {
                     panic!("error in parsing the commander player id due to : {e}")
                 });
 
-            self.players
-                .entry((player_id, faction_type)).or_insert(Player::new(player_id, player_name.to_string(), faction_type));
+                self.players
+                    .entry((player_id, faction_type))
+                    .or_insert(Player::new(
+                        player_id,
+                        player_name.to_string(),
+                        faction_type,
+                    ));
 
                 if role == "Commander" {
                     data_structure.add_commander_start(player_id, faction_type, role_change_time);
@@ -499,7 +504,6 @@ impl Game {
                 }
             }
         }
-
 
         let mut to_change: Vec<(i64, Factions)> = Vec::new();
         for ((player_id, faction_type), _) in data_structure.current_commander.iter() {
@@ -510,38 +514,15 @@ impl Game {
             data_structure.add_commander_end(player_id, faction_type, self.end_time);
         }
 
-        println!("{:?}", data_structure);
         let final_commander = data_structure.get_all_commander();
-        println!("{:?}", final_commander);
         //let mut all_players = self.get_all_players();
 
         for (faction, player_id) in final_commander {
-            println!("{faction:?}, {player_id}");
             self.players
                 .entry((player_id, faction))
                 //.or_insert(
                 .and_modify(|e| e.set_commander());
         }
-
-        println!("{:?}", self.players);
-
-        //println!("Individual stuff");
-        //for (key, time_delta) in data_structure.commander_time {
-        //println!(
-        //"{:#?}, {:#?}",
-        //self.players.get(&key).unwrap().player_name,
-        //key.1
-        //);
-        //println!("{:#?}", time_delta.num_minutes());
-        //}
-        //for (key, time_delta) in data_structure.commander_time {
-        //println!(
-        //"{:#?}, {:#?}",
-        //self.players.get(&key).unwrap().player_name,
-        //key.1
-        //);
-        //println!("{:#?}", time_delta.num_minutes());
-        //}
     }
 
     fn get_all_players(&mut self) {
@@ -654,11 +635,6 @@ impl Game {
 
     fn process_kills(&mut self) {
         //TODO make it optimized by using normal for loop or something else.
-        //let kill_lines = self
-        //.current_match
-        //.clone()
-        //.into_iter()
-        //.filter(|line| line.contains(KILLED));
 
         let kill_regex = match Regex::new(
             r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
