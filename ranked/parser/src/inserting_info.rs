@@ -2,10 +2,17 @@ use crate::parser::{Factions, Game, Maps, Modes, Player};
 use futures::future::join_all;
 //make stuff into a transaction since plan is to add multiple servers.
 use dotenv::dotenv;
+use futures::FutureExt;
 use sqlx::postgres::{PgPoolOptions, Postgres};
 use sqlx::Pool;
+use std::any::Any;
 use std::collections::HashMap;
 use std::env;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::join;
+use tokio::task::JoinHandle;
 
 const PLAYER_NOT_FOUND: i32 = -1;
 
@@ -17,14 +24,36 @@ macro_rules! zip {
     )
 }
 
-//#[tokio::main]
 pub async fn inserting_info(
-    game: Game,
+    game: Arc<Game>,
     pool: Pool<Postgres>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bulk_search_future = bulk_search_player_ids(game.get_player_vec(), pool.clone());
+    //looks like rust only starts polling on await.
 
-    let match_id_future = insert_into_match(&game, pool.clone());
+    //let tasks = Vec::new();
+    println!("Connection done");
+
+    //let mut all_tasks = JoinSet::new();
+    let bulk_search_future: Pin<Box<JoinHandle<Box<dyn Any + Send>>>> = Box::pin(tokio::spawn({
+        let new_thing = game.clone();
+        let pool_clone = pool.clone();
+        async move {
+            let result = bulk_search_player_ids(new_thing.get_player_vec(), pool_clone).await;
+            Box::new(result) as Box<dyn Any + Send>
+        }
+    }));
+
+    let match_id_future: Pin<Box<JoinHandle<Box<dyn Any + Send>>>> = Box::pin(tokio::spawn({
+        let pool_clone = pool.clone();
+        let game_clone = game.clone();
+        async move {
+            let result = insert_into_match(&game_clone, pool_clone).await;
+            Box::new(result) as Box<dyn Any + Send>
+        }
+    }));
+
+    //tasks.push(bulk_search_future);
+    //tasks.push(match_id_future);
 
     let mut already_added_steam_ids: HashMap<i64, i32> = HashMap::new();
 
@@ -32,11 +61,21 @@ pub async fn inserting_info(
     let mut commander_bulk_insert: Vec<_> = Vec::new();
     let mut commander_details_futures: Vec<_> = Vec::new();
 
-    let match_id = match_id_future.await;
+    let now = Instant::now();
+    let futures_vec = vec![bulk_search_future, match_id_future];
 
-    let bulk_search_players = bulk_search_future.await;
+    let results = join_all(futures_vec).await;
+    let bulk_search_players = match &results[0] {
+        Ok(thing) => thing.downcast_ref::<Vec<i32>>().unwrap(),
+        Err(_) => panic!("Spmething went wrong"),
+    };
+    let match_id = match &results[1] {
+        Ok(thing) => thing.downcast_ref::<i32>().unwrap(),
+        Err(_) => panic!("Spmething went wrong"),
+    };
+    println!("{:?}", now.elapsed());
 
-    for (&player, query_output) in game.get_player_vec().iter().zip(bulk_search_players) {
+    for (&player, &query_output) in game.get_player_vec().iter().zip(bulk_search_players) {
         let db_player_id: i32;
         if query_output != PLAYER_NOT_FOUND {
             db_player_id = query_output
@@ -51,11 +90,11 @@ pub async fn inserting_info(
         }
 
         if player.is_fps() {
-            fps_bulk_insert.push((db_player_id, match_id, player));
+            fps_bulk_insert.push((db_player_id, match_id.to_owned(), player));
         }
 
         if player.is_commander {
-            commander_bulk_insert.push((db_player_id, match_id, player));
+            commander_bulk_insert.push((db_player_id, match_id.to_owned(), player));
             commander_details_futures.push(search_for_commander(
                 db_player_id,
                 player,
@@ -68,42 +107,45 @@ pub async fn inserting_info(
 
     let mut win_list: Vec<_> = Vec::new();
 
+    let bulk_fps_insert_future =
+        bulk_insert_into_matches_players_fps(fps_bulk_insert, pool.clone()).boxed();
+
     //can change this to do a process as we get the details. no need to wait.
     let returned_elos = join_all(commander_details_futures).await;
+    println!("Got the returned elos now");
 
     let mut elo_list = Vec::new();
     for ((db_player_id, _, player), returned_elo) in zip!(commander_bulk_insert, returned_elos) {
         match returned_elo {
             Some(elo) => {
                 elo_list.push(elo);
-                win_list.push(player.did_win(game.winning_team));
             }
             None => {
                 insert_new_commander.push(insert_into_rankings_commander(
                     db_player_id.to_owned(),
                     player,
                     pool.clone(),
-                ));
+                ).boxed());
                 elo_list.push(1000);
-                win_list.push(player.did_win(game.winning_team));
             }
         }
+        win_list.push(player.did_win(game.winning_team));
     }
 
     let new_elos = elo_rating_commander(elo_list, &win_list, 30);
 
     println!("{:?}", new_elos);
 
-    let bulk_fps_insert_future =
-        bulk_insert_into_matches_players_fps(fps_bulk_insert, pool.clone());
     let bulk_commander_insert_future =
-        bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone());
+        bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone()).boxed();
 
-    update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).await;
+    let a = update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).boxed();
+    println!("Waiting for commander elo update");
 
-    bulk_fps_insert_future.await;
-    bulk_commander_insert_future.await;
-    join_all(insert_new_commander).await;
+    let mut tasks = vec![bulk_fps_insert_future, a, bulk_commander_insert_future];
+    tasks.extend(insert_new_commander);
+    join_all(tasks).await;
+    //join_all(insert_new_commander).await;
 
     Ok(())
 }
@@ -278,6 +320,7 @@ async fn search_for_commander(
     player: &Player,
     pool: Pool<Postgres>,
 ) -> Option<i32> {
+    println!("Starting the search for commander 1");
     let id_future = sqlx::query!(
         r#"
         SELECT * FROM rankings_commander
@@ -309,6 +352,7 @@ fn get_faction_id(faction: &Factions) -> i32 {
 }
 
 async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
+    println!("Something started for insert into match");
     let maps_id = HashMap::from([
         (Maps::NarakaCity, 1),
         (Maps::MonumentValley, 2),
@@ -376,6 +420,7 @@ async fn _insert_into_matches_players_commander(
 }
 
 async fn insert_into_rankings_commander(db_player_id: i32, player: &Player, pool: Pool<Postgres>) {
+    println!("Inserting into rankings commanders");
     let id_future = sqlx::query!(
         r#"
         INSERT INTO rankings_commander ( player_id, faction_id, wins, "ELO" )
@@ -468,6 +513,7 @@ async fn update_commander_elo(
 }
 
 async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> Vec<i32> {
+    println!("Something started for bulk player search");
     let all_search_ids = sqlx::query!(
         r#"
         SELECT COALESCE(u.id, -1) AS id
@@ -491,3 +537,28 @@ async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> 
         Err(e) => panic!("could not update due to {e}"),
     }
 }
+
+//async fn bulk_search_commander_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> Vec<i32> {
+//let all_search_ids = sqlx::query!(
+//r#"
+//SELECT COALESCE(u.id, -1) AS id
+//FROM UNNEST($1::BigInt[]) WITH ORDINALITY as p(id, ord)
+//LEFT JOIN  u ON u.steam_id = p.id
+//ORDER BY p.ord
+//"#,
+//&players
+//.iter()
+//.map(|player| player.player_id)
+//.collect::<Vec<i64>>()
+//)
+//.fetch_all(&pool)
+//.await;
+
+//match all_search_ids {
+//Ok(all_searched) => all_searched
+//.iter()
+//.map(|x| x.id.unwrap_or_else(|| panic!("Could not unwrap id")))
+//.collect::<Vec<_>>(),
+//Err(e) => panic!("could not update due to {e}"),
+//}
+//}
