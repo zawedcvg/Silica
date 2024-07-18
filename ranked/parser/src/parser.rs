@@ -26,7 +26,7 @@ pub enum Modes {
     CentauriVsSolVsAlien,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CommanderDataStructure {
     current_commander: HashMap<(i64, Factions), NaiveDateTime>,
     commander_faction: HashMap<Factions, i64>,
@@ -466,12 +466,13 @@ impl Game {
                 }
             } else {
                 let pattern_capture = role_change_pattern.captures(line);
-                let Some((_, [_, _, player_id, player_faction, role])) =
+                let Some((_, [player_name, _, player_id, player_faction, role])) =
                     pattern_capture.map(|caps| caps.extract())
                 else {
                     continue;
                 };
                 let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
+                println!("{line}");
 
                 let role_change_time = match NaiveDateTime::parse_from_str(
                     line[byte_matched_datetime_range].trim(),
@@ -488,6 +489,9 @@ impl Game {
                     panic!("error in parsing the commander player id due to : {e}")
                 });
 
+            self.players
+                .entry((player_id, faction_type)).or_insert(Player::new(player_id, player_name.to_string(), faction_type));
+
                 if role == "Commander" {
                     data_structure.add_commander_start(player_id, faction_type, role_change_time);
                 } else if data_structure.is_current_commander(faction_type, player_id) {
@@ -495,6 +499,7 @@ impl Game {
                 }
             }
         }
+
 
         let mut to_change: Vec<(i64, Factions)> = Vec::new();
         for ((player_id, faction_type), _) in data_structure.current_commander.iter() {
@@ -505,14 +510,20 @@ impl Game {
             data_structure.add_commander_end(player_id, faction_type, self.end_time);
         }
 
+        println!("{:?}", data_structure);
         let final_commander = data_structure.get_all_commander();
+        println!("{:?}", final_commander);
         //let mut all_players = self.get_all_players();
 
         for (faction, player_id) in final_commander {
+            println!("{faction:?}, {player_id}");
             self.players
                 .entry((player_id, faction))
+                //.or_insert(
                 .and_modify(|e| e.set_commander());
         }
+
+        println!("{:?}", self.players);
 
         //println!("Individual stuff");
         //for (key, time_delta) in data_structure.commander_time {
