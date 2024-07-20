@@ -1,9 +1,12 @@
 use chrono::{prelude::*, TimeDelta};
+//use rayon::prelude::*;
 use regex::Regex;
+use rev_lines::RevLines;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum Factions {
@@ -14,7 +17,7 @@ pub enum Factions {
     Wildlife,
 }
 
-#[derive(Default, Hash, PartialEq, Eq)]
+#[derive(Default, Hash, PartialEq, Eq, Debug)]
 pub enum Modes {
     #[default]
     SolVsAlien,
@@ -22,7 +25,7 @@ pub enum Modes {
     CentauriVsSolVsAlien,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CommanderDataStructure {
     current_commander: HashMap<(i64, Factions), NaiveDateTime>,
     commander_faction: HashMap<Factions, i64>,
@@ -47,7 +50,6 @@ impl CommanderDataStructure {
         faction_type: Factions,
         time_end: NaiveDateTime,
     ) {
-        //println!();
         if let Some(time_start) = self.current_commander.remove(&(player_id, faction_type)) {
             let duration = time_end.signed_duration_since(time_start);
             let _ = self
@@ -104,6 +106,7 @@ pub struct Player {
     pub winner: bool,
 }
 
+#[derive(Debug)]
 pub struct Game {
     start_time: NaiveDateTime,
     end_time: NaiveDateTime,
@@ -172,6 +175,7 @@ const TIER_ONE_UNITS: &[&str] = &[
     "HoverBike",
     "Worm",
     "FlakTruck",
+    "Squid",
 ];
 const TIER_TWO_UNITS: &[&str] = &[
     "Behemoth",
@@ -362,7 +366,7 @@ fn _is_valid_faction_type(match_type: Modes, faction_type: Factions) -> bool {
     }
 }
 
-fn get_byte_indices(line: String, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
+fn get_byte_indices(line: &str, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
     let valid_start = line
         .char_indices()
         .nth(range.start)
@@ -422,9 +426,13 @@ impl Game {
 
         let mut data_structure = CommanderDataStructure::default();
 
-        let req_lines = self.current_match.iter().filter(|x| {
-            remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
-        });
+        let req_lines: Vec<_> = self
+            .current_match
+            .iter()
+            .filter(|x| {
+                remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
+            })
+            .collect();
 
         for line in req_lines {
             if line.contains(DISCONNECTED) {
@@ -442,8 +450,7 @@ impl Game {
                 });
 
                 if data_structure.is_current_commander(faction_type, player_id) {
-                    let byte_matched_datetime_range =
-                        get_byte_indices(line.to_string(), DATETIME_RANGE);
+                    let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
 
                     let time_end = match NaiveDateTime::parse_from_str(
                         line[byte_matched_datetime_range].trim(),
@@ -458,13 +465,12 @@ impl Game {
                 }
             } else {
                 let pattern_capture = role_change_pattern.captures(line);
-                let Some((_, [_, _, player_id, player_faction, role])) =
+                let Some((_, [player_name, _, player_id, player_faction, role])) =
                     pattern_capture.map(|caps| caps.extract())
                 else {
                     continue;
                 };
-                let byte_matched_datetime_range =
-                    get_byte_indices(line.to_string(), DATETIME_RANGE);
+                let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
 
                 let role_change_time = match NaiveDateTime::parse_from_str(
                     line[byte_matched_datetime_range].trim(),
@@ -480,6 +486,14 @@ impl Game {
                 let player_id = player_id.parse::<i64>().unwrap_or_else(|e| {
                     panic!("error in parsing the commander player id due to : {e}")
                 });
+
+                self.players
+                    .entry((player_id, faction_type))
+                    .or_insert(Player::new(
+                        player_id,
+                        player_name.to_string(),
+                        faction_type,
+                    ));
 
                 if role == "Commander" {
                     data_structure.add_commander_start(player_id, faction_type, role_change_time);
@@ -504,26 +518,9 @@ impl Game {
         for (faction, player_id) in final_commander {
             self.players
                 .entry((player_id, faction))
+                //.or_insert(
                 .and_modify(|e| e.set_commander());
         }
-
-        //println!("Individual stuff");
-        //for (key, time_delta) in data_structure.commander_time {
-        //println!(
-        //"{:#?}, {:#?}",
-        //self.players.get(&key).unwrap().player_name,
-        //key.1
-        //);
-        //println!("{:#?}", time_delta.num_minutes());
-        //}
-        //for (key, time_delta) in data_structure.commander_time {
-        //println!(
-        //"{:#?}, {:#?}",
-        //self.players.get(&key).unwrap().player_name,
-        //key.1
-        //);
-        //println!("{:#?}", time_delta.num_minutes());
-        //}
     }
 
     fn get_all_players(&mut self) {
@@ -565,39 +562,56 @@ impl Game {
         }
     }
 
-    fn get_current_match(&mut self, all_lines: &[String]) {
+    fn get_current_match(&mut self, mut all_lines: Vec<PathBuf>) {
         let mut did_find_world_win = false;
         //TODO improve this part
-        let mut end_index = 0;
-        for (i, value) in all_lines.iter().rev().enumerate() {
-            let byte_matched_round_end_range = get_byte_indices(value.to_string(), ROUND_END_RANGE);
-            let byte_matched_round_start_range =
-                get_byte_indices(value.to_string(), ROUND_START_RANGE);
-            let byte_matched_datetime_range = get_byte_indices(value.to_string(), DATETIME_RANGE);
-            if value[byte_matched_round_end_range].trim() == ROUND_END {
-                self.end_time = match NaiveDateTime::parse_from_str(
-                    value[byte_matched_datetime_range].trim(),
-                    "%m/%d/%Y - %H:%M:%S",
-                ) {
-                    Ok(datetime) => datetime,
+
+        let mut current_match = Vec::new();
+
+        while let Some(file) = all_lines.pop() {
+            let reader = match File::open(file) {
+                Ok(open_file) => RevLines::new(open_file),
+                Err(e) => panic!("Error in opening the log file due to: {e}"),
+            };
+
+            for option_line in reader {
+                let line = match option_line {
+                    Ok(line) => line,
                     Err(e) => {
-                        panic!("Error in trying to parse round start time: {e}")
+                        eprintln!("Cannot read line due to {e}");
+                        continue;
                     }
                 };
-                did_find_world_win = true;
-                end_index = all_lines.len() - i;
-            } else if value[byte_matched_round_start_range].trim() == ROUND_START
-                && did_find_world_win
-            {
-                self.start_time = match NaiveDateTime::parse_from_str(
-                    value[DATETIME_RANGE].trim(),
-                    "%m/%d/%Y - %H:%M:%S",
-                ) {
-                    Ok(datetime) => datetime,
-                    Err(e) => panic!("Error in trying to parse round start time {e}"),
-                };
-                self.current_match = all_lines[all_lines.len() - i - 1..end_index].to_vec();
-                return;
+                let byte_matched_round_end_range = get_byte_indices(&line, ROUND_END_RANGE);
+                let byte_matched_round_start_range = get_byte_indices(&line, ROUND_START_RANGE);
+                let byte_matched_datetime_range = get_byte_indices(&line, DATETIME_RANGE);
+                if line[byte_matched_round_end_range].trim() == ROUND_END {
+                    self.end_time = match NaiveDateTime::parse_from_str(
+                        line[byte_matched_datetime_range].trim(),
+                        "%m/%d/%Y - %H:%M:%S",
+                    ) {
+                        Ok(datetime) => datetime,
+                        Err(e) => {
+                            panic!("Error in trying to parse round start time: {e}")
+                        }
+                    };
+                    did_find_world_win = true;
+                    current_match.push(line);
+                } else if did_find_world_win {
+                    current_match.push(line.clone());
+                    if line[byte_matched_round_start_range].trim() == ROUND_START {
+                        self.start_time = match NaiveDateTime::parse_from_str(
+                            line[DATETIME_RANGE].trim(),
+                            "%m/%d/%Y - %H:%M:%S",
+                        ) {
+                            Ok(datetime) => datetime,
+                            Err(e) => panic!("Error in trying to parse round start time {e}"),
+                        };
+                        current_match.reverse();
+                        self.current_match = current_match;
+                        return;
+                    }
+                }
             }
         }
     }
@@ -619,11 +633,6 @@ impl Game {
 
     fn process_kills(&mut self) {
         //TODO make it optimized by using normal for loop or something else.
-        let kill_lines = self
-            .current_match
-            .clone()
-            .into_iter()
-            .filter(|line| line.contains(KILLED));
 
         let kill_regex = match Regex::new(
             r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
@@ -632,8 +641,12 @@ impl Game {
             Err(e) => panic!("Error in creating the kill regex: {e}"),
         };
 
-        for kill_line in kill_lines {
-            let kill_matches = kill_regex.captures(&kill_line);
+        for kill_line in &self.current_match {
+            if !kill_line.contains(KILLED) {
+                continue;
+            }
+
+            let kill_matches = kill_regex.captures(kill_line);
             let Some((
                 _,
                 [player_name, _, player_id, player_faction, enemy_name, _, enemy_id, enemy_faction, _, _, victim],
@@ -642,38 +655,26 @@ impl Game {
                 continue;
             };
 
-            let faction_type = Game::get_factions(player_faction);
-
-            match player_id.parse::<i64>() {
-                Ok(player_id) => {
-                    let player = self
-                        .players
-                        .entry((player_id, faction_type))
-                        .or_insert_with(|| {
-                            Player::new(player_id, player_name.to_string(), faction_type)
-                        });
-                    player.update_unit_kill(victim);
-                }
-                Err(_) => {
-                    //change this, unnecessary thing
-                    //println!("Can't parse due to {e}");
-                }
+            if let Ok(player_id) = player_id.parse::<i64>() {
+                let faction_type = Game::get_factions(player_faction);
+                let player = self
+                    .players
+                    .entry((player_id, faction_type))
+                    .or_insert_with(|| {
+                        Player::new(player_id, player_name.to_string(), faction_type)
+                    });
+                player.update_unit_kill(victim);
             };
 
-            let enemy_faction_type = Game::get_factions(enemy_faction);
-            match enemy_id.parse::<i64>() {
-                Ok(enemy_id) => {
-                    let enemy_player = self
-                        .players
-                        .entry((enemy_id, enemy_faction_type))
-                        .or_insert_with(|| {
-                            Player::new(enemy_id, enemy_name.to_string(), enemy_faction_type)
-                        });
-                    enemy_player.update_death(victim);
-                }
-                Err(_) => {
-                    //println!("Can't parse due to {e}");
-                }
+            if let Ok(enemy_id) = enemy_id.parse::<i64>() {
+                let enemy_faction_type = Game::get_factions(enemy_faction);
+                let enemy_player = self
+                    .players
+                    .entry((enemy_id, enemy_faction_type))
+                    .or_insert_with(|| {
+                        Player::new(enemy_id, enemy_name.to_string(), enemy_faction_type)
+                    });
+                enemy_player.update_death(victim);
             };
         }
     }
@@ -721,38 +722,50 @@ impl Game {
         }
     }
 
-    fn get_current_map(&mut self, all_lines: &[String]) {
-        let req_info = all_lines
-            .iter()
-            .filter(|x| remove_chat_messages(x))
-            .map(|x| remove_date_data(x))
-            .filter(|x| x.contains(LOADING_MAP))
-            .rev();
-
+    fn get_current_map(&mut self, mut all_lines: Vec<PathBuf>) {
         let map_regex = match Regex::new(r#"Loading map "(.*)""#) {
             Ok(map_regex) => map_regex,
             Err(_) => panic!("Error in creating the get_current_map_regex"),
         };
 
-        for required_line in req_info {
-            let map_matched = map_regex.captures(required_line);
-            match map_matched {
-                Some(map) => {
-                    let map_str = map.get(1).unwrap().as_str();
-                    if map_str == "NarakaCity" {
-                        self.map = Maps::NarakaCity
-                    } else if map_str == "MonumentValley" {
-                        self.map = Maps::MonumentValley
-                    } else if map_str == "RiftBasin" {
-                        self.map = Maps::RiftBasin
-                    } else if map_str == "Badlands" {
-                        self.map = Maps::Badlands
-                    } else if map_str == "GreatErg" {
-                        self.map = Maps::GreatErg
+        while let Some(file) = all_lines.pop() {
+            let reader = match File::open(file) {
+                Ok(open_file) => RevLines::new(open_file),
+                Err(e) => panic!("Error in opening the log file due to: {e}"),
+            };
+
+            for option_line in reader {
+                let line = match option_line {
+                    Ok(line) => {
+                        if !line.contains(LOADING_MAP) {
+                            continue;
+                        }
+                        line
                     }
-                    return;
+                    Err(e) => {
+                        eprintln!("Cannot read line due to {e}");
+                        continue;
+                    }
+                };
+                let map_matched = map_regex.captures(&line);
+                match map_matched {
+                    Some(map) => {
+                        let map_str = map.get(1).unwrap().as_str();
+                        if map_str == "NarakaCity" {
+                            self.map = Maps::NarakaCity;
+                        } else if map_str == "MonumentValley" {
+                            self.map = Maps::MonumentValley;
+                        } else if map_str == "RiftBasin" {
+                            self.map = Maps::RiftBasin;
+                        } else if map_str == "Badlands" {
+                            self.map = Maps::Badlands;
+                        } else if map_str == "GreatErg" {
+                            self.map = Maps::GreatErg;
+                        }
+                        return;
+                    }
+                    None => continue,
                 }
-                None => continue,
             }
         }
     }
@@ -792,7 +805,6 @@ impl Game {
 }
 impl Default for Game {
     fn default() -> Self {
-        //Make this better, ugly for now
         let default_time = NaiveDateTime::default();
         Game {
             start_time: default_time,
@@ -814,30 +826,31 @@ fn remove_chat_messages(line: &str) -> bool {
 
 fn remove_date_data(line: &str) -> &str {
     if line.len() > DATETIME_END {
-        let byte_corrected_datetimeend =
-            get_byte_indices(line.to_string(), DATETIME_END..line.len());
+        let byte_corrected_datetimeend = get_byte_indices(line, DATETIME_END..line.len());
         &line.trim()[byte_corrected_datetimeend]
     } else {
         ""
     }
 }
 
-fn parse_info(all_lines: Vec<String>) -> Game {
+fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     let mut game = Game::default();
-    game.get_current_map(&all_lines);
-    game.get_current_match(&all_lines);
+    //maybe process them separately and do the assignment later
+    //current map is somehow more timetaking than current match? this is because it has to go
+    //through more lines
+    game.get_current_map(all_lines.clone());
+    game.get_current_match(all_lines.clone());
     game.get_match_type();
     game.get_winning_team();
     game.get_all_players();
     game.process_kills();
     game.process_structure_kills();
     game.get_commanders();
-
     game
-    //println!("{:#?}", game.players);
 }
 
-pub fn checking_folder(path: &String) -> Game {
+pub fn checking_folder(path: &Path) -> Game {
+    println!("The path of the folder is {path:?}");
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(_) => panic!("Failed to read directory"),
@@ -853,22 +866,7 @@ pub fn checking_folder(path: &String) -> Game {
         .collect();
     log_files.sort();
 
-    let mut all_lines: Vec<_> = Vec::new();
-    for file in log_files {
-        let reader = match File::open(file) {
-            Ok(open_file) => BufReader::new(open_file),
-            Err(e) => panic!("Error in opening the log file due to: {e}"),
-        };
-        for line in reader.lines() {
-            match line {
-                Ok(result) => all_lines.push(result),
-                Err(e) => println!("Could not read a line due to: {e}"),
-            }
-        }
-    }
-    parse_info(all_lines)
-}
+    println!("{:#?} is all the files in the log_file", log_files);
 
-//fn main() {
-//checking_folder("/home/neeladri/Silica/ranked/log_folder/".to_string());
-//}
+    parse_info(log_files)
+}

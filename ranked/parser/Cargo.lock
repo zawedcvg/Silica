@@ -796,6 +796,7 @@ dependencies = [
  "futures",
  "libc",
  "regex",
+ "rev_lines",
  "serde",
  "serde_json",
  "sqlx",
@@ -964,6 +965,15 @@ name = "regex-syntax"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
+
+[[package]]
+name = "rev_lines"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed62916ac7a5ccbf13fa5e1d303029ff015600fee841756dfc134a1ac62bf05f"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "ring"
