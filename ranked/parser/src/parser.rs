@@ -1,12 +1,11 @@
 use chrono::{prelude::*, TimeDelta};
-use rayon::prelude::*;
+//use rayon::prelude::*;
 use regex::Regex;
 use rev_lines::RevLines;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -51,7 +50,6 @@ impl CommanderDataStructure {
         faction_type: Factions,
         time_end: NaiveDateTime,
     ) {
-        //println!();
         if let Some(time_start) = self.current_commander.remove(&(player_id, faction_type)) {
             let duration = time_end.signed_duration_since(time_start);
             let _ = self
@@ -845,17 +843,14 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     game.get_match_type();
     game.get_winning_team();
     game.get_all_players();
-    //processing kills takes a fairly big portion
-    let now = Instant::now();
     game.process_kills();
     game.process_structure_kills();
-    println!("time elapsed to parse all the info {:?}", now.elapsed());
     game.get_commanders();
     game
 }
 
-pub fn checking_folder(path: &String) -> Game {
-    let now = Instant::now();
+pub fn checking_folder(path: &Path) -> Game {
+    println!("The path of the folder is {path:?}");
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(_) => panic!("Failed to read directory"),
@@ -870,7 +865,8 @@ pub fn checking_folder(path: &String) -> Game {
         .filter(|r| r.extension().unwrap_or(OsStr::new("")) == "log")
         .collect();
     log_files.sort();
-    println!("time taken to read all the files {:?}", now.elapsed());
+
+    println!("{:#?} is all the files in the log_file", log_files);
 
     parse_info(log_files)
 }

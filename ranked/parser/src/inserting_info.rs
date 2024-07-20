@@ -1,17 +1,14 @@
 use crate::parser::{Factions, Game, Maps, Modes, Player};
 use futures::future::join_all;
 //make stuff into a transaction since plan is to add multiple servers.
-use dotenv::dotenv;
 use futures::FutureExt;
-use sqlx::postgres::{PgPoolOptions, Postgres};
+use sqlx::postgres::Postgres;
 use sqlx::Pool;
 use std::any::Any;
 use std::collections::HashMap;
-use std::env;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::join;
 use tokio::task::JoinHandle;
 
 const PLAYER_NOT_FOUND: i32 = -1;
@@ -28,7 +25,6 @@ pub async fn inserting_info(
     game: Arc<Game>,
     pool: Pool<Postgres>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    //looks like rust only starts polling on await.
 
     //let tasks = Vec::new();
     println!("Connection done");
@@ -121,17 +117,15 @@ pub async fn inserting_info(
                 elo_list.push(elo);
             }
             None => {
-                insert_new_commander.push(insert_into_rankings_commander(
-                    db_player_id.to_owned(),
-                    player,
-                    pool.clone(),
-                ).boxed());
+                insert_new_commander.push(
+                    insert_into_rankings_commander(db_player_id.to_owned(), player, pool.clone())
+                        .boxed(),
+                );
                 elo_list.push(1000);
             }
         }
         win_list.push(player.did_win(game.winning_team));
     }
-
     let new_elos = elo_rating_commander(elo_list, &win_list, 30);
 
     println!("{:?}", new_elos);
@@ -139,7 +133,9 @@ pub async fn inserting_info(
     let bulk_commander_insert_future =
         bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone()).boxed();
 
-    let a = update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).boxed();
+    let a =
+        update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).boxed();
+
     println!("Waiting for commander elo update");
 
     let mut tasks = vec![bulk_fps_insert_future, a, bulk_commander_insert_future];

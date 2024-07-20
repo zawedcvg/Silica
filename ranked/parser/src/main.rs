@@ -1,10 +1,10 @@
 pub mod inserting_info;
 use dotenv::dotenv;
-use sqlx::postgres::{PgPoolOptions, Postgres};
+use sqlx::postgres::PgPoolOptions;
 use std::fs::OpenOptions;
 use std::io::{self};
+use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
 pub mod parser;
 use crate::inserting_info::inserting_info;
 use crate::parser::checking_folder;
@@ -24,11 +24,26 @@ use {
 #[tokio::main]
 async fn main() {
     //Open files to append stdout and stderr
+    let args: Vec<String> = env::args().collect();
+
+    let env_path = &args[1];
+
+    match env::set_current_dir(env_path) {
+        Ok(_) => (),
+        Err(e) => panic!(
+            "Was trying to set current directory to {:?} due to {e}.",
+            env_path
+        ),
+    }
+
+    dotenv().ok();
+
     let stdout_file = OpenOptions::new()
         .create(true)
         .append(true)
         .open("stdout.txt")
         .unwrap_or_else(|err| panic!("Failed to open stdout.txt: {}", err));
+
     let stderr_file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -104,32 +119,25 @@ async fn main() {
             }
         }
     }
-    //Warm up/start the connection pool here
     //let now = Instant::now();
-    let args: Vec<String> = env::args().collect();
-
-    match env::set_current_dir(&args[2]) {
-        Ok(_) => (),
-        Err(e) => panic!("Could not set current directory due to {e}"),
-    }
-
-    dotenv().ok();
 
     // Get the database URL from the environment variable
     let database_url = env::var("DATABASE_URL").unwrap();
-    println!("{}", database_url);
+
     // Create a connection pool
     let pool = PgPoolOptions::new()
         .max_connections(10)
         .connect(&database_url);
 
-    let game = checking_folder(&args[1]);
-    //println!("{:?} time elapsed for everything", now.elapsed());
+    let log_folder = Path::new(&args[1]);
+
+    let game = checking_folder(log_folder);
 
     let _ = inserting_info(
         Arc::new(game),
-        pool.await
-            .unwrap_or_else(|e| panic!("something went wrong due to {e}")),
+        pool.await.unwrap_or_else(|e| {
+            panic!("something went wrong while connecting to database due to {e}")
+        }),
     )
     .await;
 }
