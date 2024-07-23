@@ -399,7 +399,7 @@ impl Game {
             Modes::SolVsAlien => [Factions::Sol, Factions::Alien].to_vec(),
             Modes::CentauriVsSol => [Factions::Centauri, Factions::Sol].to_vec(),
             Modes::CentauriVsSolVsAlien => {
-                [Factions::Sol, Factions::Alien, Factions::Wildlife].to_vec()
+                [Factions::Sol, Factions::Alien, Factions::Centauri].to_vec()
             }
         }
     }
@@ -621,7 +621,14 @@ impl Game {
         let match_type_thing = self.current_match[0][54..].trim();
         //TODO check this
         let match_type_regex = Regex::new(r#"\(gametype "(.*?)"\)"#).unwrap();
-        let match_type = match_type_regex.find(match_type_thing).unwrap().as_str();
+        //let match_type = match_type_regex.find(match_type_thing).unwrap().as_str();
+        let match_type = match_type_regex
+            .captures(match_type_thing)
+            .unwrap()
+            .get(1)
+            .unwrap_or_else(|| panic!("Couldn't parse the match_type"))
+            .as_str();
+
         if match_type == SOL_VS_ALIEN {
             self.match_type = Modes::SolVsAlien
         } else if match_type == CENTAURI_VS_SOL {
