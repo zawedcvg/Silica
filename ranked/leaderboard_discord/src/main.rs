@@ -1,4 +1,6 @@
 use rust_xlsxwriter::*;
+//use yup_oauth2::{self as oauth2, AccessToken};
+pub mod update_sheets;
 //use futures::TryStreamExt;
 use tokio_stream::StreamExt;
 
@@ -9,6 +11,7 @@ use sqlx::postgres::{PgPoolOptions, Postgres};
 use sqlx::prelude::FromRow;
 use sqlx::Pool;
 use std::env;
+use update_sheets::update_google_sheet_from_excel;
 
 use serde::{Deserialize, Serialize};
 
@@ -77,21 +80,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut all_tasks = JoinSet::new();
 
-    all_tasks.spawn(create_workbook::<CommanderEloRecord>(
-        pool.clone(),
-        query_commander,
-        String::from("commander_elo_test.xlsx"),
-    ));
-    all_tasks.spawn(create_workbook::<FpsRankingTotalRecord>(
-        pool.clone(),
-        query_fps_total,
-        String::from("ranking_fps_total.xlsx"),
-    ));
-    all_tasks.spawn(create_workbook::<FpsRankingAverageRecord>(
-        pool.clone(),
-        query_fps_average,
-        String::from("ranking_fps_average.xlsx"),
-    ));
+    all_tasks.spawn({
+        let pool_clone = pool.clone();
+        async move {
+            create_workbook::<CommanderEloRecord>(
+                pool_clone,
+                query_commander,
+                String::from("commander_elo_test.xlsx"),
+            )
+            .await;
+
+            match update_google_sheet_from_excel(
+                "commander_elo_test.xlsx",
+                "15_ZrShuqRiPbjZuL8rvk56zznucOG16M3bkeH-khsLk",
+                "Sheet1",
+                "client_secret.json",
+            )
+            .await
+            {
+                Ok(_) => println!("Completed the update for commander_elo"),
+                Err(e) => println!("Could not complete due to {e}"),
+            }
+        }
+    });
+
+    all_tasks.spawn({
+        let pool_clone = pool.clone();
+        async move {
+            create_workbook::<FpsRankingTotalRecord>(
+                pool_clone,
+                query_fps_total,
+                String::from("ranking_fps_total.xlsx"),
+            )
+            .await;
+
+            match update_google_sheet_from_excel(
+                "ranking_fps_total.xlsx",
+                "1_Qh2oBUdveXkfsjpHWnK_evE2u7KWothfyGwfAoejWQ",
+                "Sheet1",
+                "client_secret.json",
+            )
+            .await
+            {
+                Ok(_) => println!("Completed the update of ranking_fps_total"),
+                Err(e) => println!("Could not complete due to {e}"),
+            }
+        }
+    });
+
+    all_tasks.spawn({
+        let pool_clone = pool.clone();
+        async move {
+            create_workbook::<FpsRankingAverageRecord>(
+                pool_clone,
+                query_fps_average,
+                String::from("ranking_fps_average.xlsx"),
+            )
+            .await;
+
+            match update_google_sheet_from_excel(
+                "ranking_fps_average.xlsx",
+                "1N3l-E77YNKl83rVHUw4emcMuURSPYb6VpMDU1SWmob8",
+                "Sheet1",
+                "client_secret.json",
+            )
+            .await
+            {
+                Ok(_) => println!("Completed the update of ranking_fps_average"),
+                Err(e) => println!("Could not complete due to {e}"),
+            }
+        }
+    });
 
     while let Some(res) = all_tasks.join_next().await {
         res.unwrap();
@@ -108,8 +167,7 @@ where
         + serde::Serialize
         + for<'a> serde::Deserialize<'a>,
 {
-    let rows_future = sqlx::query_as::<_, T>(query)
-        .fetch_all(&pool);
+    let rows_future = sqlx::query_as::<_, T>(query).fetch_all(&pool);
 
     let mut workbook = Workbook::new();
 
@@ -125,7 +183,6 @@ where
     worksheet
         .deserialize_headers_with_format::<T>(0, 0, &header_format)
         .unwrap();
-
 
     let rows = rows_future.await.unwrap();
     worksheet.serialize(&rows).unwrap();
