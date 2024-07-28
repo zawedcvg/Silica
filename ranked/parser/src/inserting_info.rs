@@ -1,4 +1,4 @@
-use crate::parser::{Factions, Game, Maps, Modes, Player};
+use crate::parser::{Factions, Game, Maps, Modes, Player, TIER_ONE, TIER_THREE, TIER_TWO};
 use futures::future::join_all;
 //make stuff into a transaction since plan is to add multiple servers.
 use futures::FutureExt;
@@ -25,7 +25,6 @@ pub async fn inserting_info(
     game: Arc<Game>,
     pool: Pool<Postgres>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     //let tasks = Vec::new();
     println!("Connection done");
 
@@ -237,12 +236,12 @@ async fn bulk_insert_into_matches_players_fps(
         .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| a.1).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| get_faction_id(&a.2.faction_type)).collect::<Vec<i32>>())
-        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[0]).collect::<Vec<i32>>())
-        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[1]).collect::<Vec<i32>>())
-        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[2]).collect::<Vec<i32>>())
-        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[0]).collect::<Vec<i32>>())
-        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[1]).collect::<Vec<i32>>())
-        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[2]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[TIER_ONE]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[TIER_TWO]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.unit_kill[TIER_THREE]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[TIER_ONE]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[TIER_TWO]).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[TIER_THREE]).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| a.2.points).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| a.2.death).collect::<Vec<i32>>())
     .execute(&pool)
@@ -274,12 +273,12 @@ async fn _insert_into_matches_players_fps(
         db_player_id,
         db_match_id,
         faction_id.get(&player.faction_type),
-        player.unit_kill[0],
-        player.unit_kill[1],
-        player.unit_kill[2],
-        player.structure_kill[0],
-        player.structure_kill[1],
-        player.structure_kill[2],
+        player.unit_kill[TIER_ONE],
+        player.unit_kill[TIER_TWO],
+        player.unit_kill[TIER_THREE],
+        player.structure_kill[TIER_ONE],
+        player.structure_kill[TIER_TWO],
+        player.structure_kill[TIER_THREE],
         player.points,
         player.death
     )

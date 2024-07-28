@@ -794,14 +794,10 @@ dependencies = [
  "chrono",
  "dotenv",
  "futures",
- "libc",
  "regex",
  "rev_lines",
- "serde",
- "serde_json",
  "sqlx",
  "tokio",
- "tokio-stream",
  "winapi",
 ]
 

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::usize;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum Factions {
@@ -40,6 +40,7 @@ impl CommanderDataStructure {
         time_start: NaiveDateTime,
     ) {
         self.commander_faction.insert(faction_type, player_id);
+        // TODO No checks for if there was a previous commander in the position already
         self.current_commander
             .insert((player_id, faction_type), time_start);
     }
@@ -138,6 +139,9 @@ const DISCONNECTED: &str = "disconnected";
 const TIER_ONE_STRUCTURE_POINTS: i32 = 10;
 const TIER_TWO_STRUCTURE_POINTS: i32 = 50;
 const TIER_THREE_STRUCTURE_POINTS: i32 = 100;
+pub const TIER_ONE: usize = 0;
+pub const TIER_TWO: usize = 1;
+pub const TIER_THREE: usize = 2;
 
 const TIER_ONE_UNIT_POINTS: i32 = 1;
 const TIER_TWO_UNIT_POINTS: i32 = 10;
@@ -251,15 +255,15 @@ impl Player {
         self.total_structure_kills += 1;
         match structure {
             s if TIER_ONE_STRUCTURES.contains(&s) => {
-                self.structure_kill[0] += 1;
+                self.structure_kill[TIER_ONE] += 1;
                 self.points += TIER_ONE_STRUCTURE_POINTS;
             }
             s if TIER_TWO_STRUCTURES.contains(&s) => {
-                self.structure_kill[1] += 1;
+                self.structure_kill[TIER_TWO] += 1;
                 self.points += TIER_TWO_STRUCTURE_POINTS;
             }
             s if TIER_THREE_STRUCTURES.contains(&s) => {
-                self.structure_kill[2] += 1;
+                self.structure_kill[TIER_THREE] += 1;
                 self.points += TIER_THREE_STRUCTURE_POINTS;
             }
             _ => (),
@@ -270,15 +274,15 @@ impl Player {
         self.total_unit_kills += 1;
         match unit {
             u if TIER_ONE_UNITS.contains(&u) => {
-                self.unit_kill[0] += 1;
+                self.unit_kill[TIER_ONE] += 1;
                 self.points += TIER_ONE_UNIT_POINTS;
             }
             u if TIER_TWO_UNITS.contains(&u) => {
-                self.unit_kill[1] += 1;
+                self.unit_kill[TIER_TWO] += 1;
                 self.points += TIER_TWO_UNIT_POINTS;
             }
             u if TIER_THREE_UNITS.contains(&u) => {
-                self.unit_kill[2] += 1;
+                self.unit_kill[TIER_THREE] += 1;
                 if u == "Queen" {
                     self.points += QUEEN_UNIT_POINTS;
                 } else {
@@ -562,13 +566,12 @@ impl Game {
         }
     }
 
-    fn get_current_match(&mut self, mut all_lines: Vec<PathBuf>) {
+    fn get_current_match(&mut self, all_lines: &[PathBuf]) {
         let mut did_find_world_win = false;
-        //TODO improve this part
 
         let mut current_match = Vec::new();
 
-        while let Some(file) = all_lines.pop() {
+        for file in all_lines.iter().rev() {
             let reader = match File::open(file) {
                 Ok(open_file) => RevLines::new(open_file),
                 Err(e) => panic!("Error in opening the log file due to: {e}"),
@@ -639,8 +642,6 @@ impl Game {
     }
 
     fn process_kills(&mut self) {
-        //TODO make it optimized by using normal for loop or something else.
-
         let kill_regex = match Regex::new(
             r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
         ) {
@@ -729,13 +730,13 @@ impl Game {
         }
     }
 
-    fn get_current_map(&mut self, mut all_lines: Vec<PathBuf>) {
+    fn get_current_map(&mut self, all_lines: &[PathBuf]) {
         let map_regex = match Regex::new(r#"Loading map "(.*)""#) {
             Ok(map_regex) => map_regex,
             Err(_) => panic!("Error in creating the get_current_map_regex"),
         };
 
-        while let Some(file) = all_lines.pop() {
+        for file in all_lines.iter().rev() {
             let reader = match File::open(file) {
                 Ok(open_file) => RevLines::new(open_file),
                 Err(e) => panic!("Error in opening the log file due to: {e}"),
@@ -845,8 +846,8 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     //maybe process them separately and do the assignment later
     //current map is somehow more timetaking than current match? this is because it has to go
     //through more lines
-    game.get_current_map(all_lines.clone());
-    game.get_current_match(all_lines.clone());
+    game.get_current_map(&all_lines);
+    game.get_current_match(&all_lines);
     game.get_match_type();
     game.get_winning_team();
     game.get_all_players();
