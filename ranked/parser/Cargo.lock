@@ -794,6 +794,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "futures",
+ "libc",
  "regex",
  "rev_lines",
  "sqlx",
