@@ -31,7 +31,7 @@ async fn main() {
     match env::set_current_dir(env_path) {
         Ok(_) => (),
         Err(e) => panic!(
-            "Was trying to set current directory to {:?} due to {e}.",
+            "Could not set current directory to {:?} due to {e}.",
             env_path
         ),
     }
@@ -119,7 +119,6 @@ async fn main() {
             }
         }
     }
-    //let now = Instant::now();
 
     // Get the database URL from the environment variable
     let database_url = env::var("DATABASE_URL").unwrap();
@@ -130,6 +129,9 @@ async fn main() {
         .connect(&database_url);
 
     let log_folder = Path::new(&args[1]);
+
+    //TODO getting the current map method takes a lot of time due to next line of rev lines/or is
+    //it vector capacity issues? not sure
 
     let game = checking_folder(log_folder);
 

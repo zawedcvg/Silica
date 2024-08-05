@@ -154,7 +154,6 @@ const ROUND_START_RANGE: std::ops::Range<usize> = 25..54;
 const ROUND_END_RANGE: std::ops::Range<usize> = 25..52;
 const DATETIME_END: usize = 25;
 
-//const MAP_ID = {"NarakaCity": 1, "MonumentValley": 2, "RiftBasin": 3, "Badlands": 4, "GreatErg": 5}
 #[derive(Debug, Default, Hash, Eq, PartialEq)]
 pub enum Maps {
     #[default]
@@ -430,13 +429,9 @@ impl Game {
 
         let mut data_structure = CommanderDataStructure::default();
 
-        let req_lines: Vec<_> = self
-            .current_match
-            .iter()
-            .filter(|x| {
-                remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
-            })
-            .collect();
+        let req_lines = self.current_match.iter().filter(|x| {
+            remove_chat_messages(x) && (x.contains(CHANGED_ROLE) || x.contains(DISCONNECTED))
+        });
 
         for line in req_lines {
             if line.contains(DISCONNECTED) {
@@ -522,7 +517,6 @@ impl Game {
         for (faction, player_id) in final_commander {
             self.players
                 .entry((player_id, faction))
-                //.or_insert(
                 .and_modify(|e| e.set_commander());
         }
     }
@@ -532,8 +526,8 @@ impl Game {
             .current_match
             .iter()
             .filter(|x| remove_chat_messages(x))
-            .map(|x| remove_date_data(x))
-            .filter(|x| x.contains(JOINED_TEAM));
+            .filter(|x| x.contains(JOINED_TEAM))
+            .map(|x| remove_date_data(x));
 
         let join_match_regex =
             Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" joined team "(.*)""#).unwrap();
@@ -688,13 +682,6 @@ impl Game {
     }
 
     fn process_structure_kills(&mut self) {
-        //TODO make it optimized by using normal for loop or something else.
-        let kill_lines = self
-            .current_match
-            .clone()
-            .into_iter()
-            .filter(|line| line.contains(STRUCTURE_KILL));
-
         let kill_regex = match Regex::new(
             r#""(.*?)<(.*?)><(.*?)><(.*?)>" triggered "structure_kill" \(structure "(.*)"\) \(struct_team "(.*)"\)"#,
         ) {
@@ -702,8 +689,11 @@ impl Game {
             Err(e) => panic!("Error in creating the kill regex: {e}"),
         };
 
-        for kill_line in kill_lines {
-            let kill_matches = kill_regex.captures(&kill_line);
+        for kill_line in &self.current_match {
+            if !kill_line.contains(STRUCTURE_KILL) {
+                continue;
+            }
+            let kill_matches = kill_regex.captures(kill_line);
             let Some((_, [player_name, _, player_id, player_faction, enemy_structure, _])) =
                 kill_matches.map(|cap| cap.extract())
             else {
@@ -714,6 +704,7 @@ impl Game {
 
             match player_id.parse::<i64>() {
                 Ok(player_id) => {
+                    //NOTE Why should player not be specified as mut here?
                     let player = self
                         .players
                         .entry((player_id, faction_type))
@@ -843,9 +834,7 @@ fn remove_date_data(line: &str) -> &str {
 
 fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     let mut game = Game::default();
-    //maybe process them separately and do the assignment later
-    //current map is somehow more timetaking than current match? this is because it has to go
-    //through more lines
+    //NOTE Possible to parallelize them, but probably not worth it.
     game.get_current_map(&all_lines);
     game.get_current_match(&all_lines);
     game.get_match_type();
@@ -872,9 +861,8 @@ pub fn checking_folder(path: &Path) -> Game {
     let mut log_files: Vec<_> = file_entries
         .filter(|r| r.extension().unwrap_or(OsStr::new("")) == "log")
         .collect();
-    log_files.sort();
 
-    println!("{:#?} is all the files in the log_file", log_files);
+    log_files.sort();
 
     parse_info(log_files)
 }

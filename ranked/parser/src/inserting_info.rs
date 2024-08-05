@@ -28,6 +28,13 @@ pub async fn inserting_info(
     //let tasks = Vec::new();
     println!("Connection done");
 
+    // NOTE This is temporary and only until the game AI is better
+
+    if game.get_player_vec().len() < 7 {
+        eprintln!("Not enough players");
+        return Ok(());
+    }
+
     //let mut all_tasks = JoinSet::new();
     let bulk_search_future: Pin<Box<JoinHandle<Box<dyn Any + Send>>>> = Box::pin(tokio::spawn({
         let new_thing = game.clone();
