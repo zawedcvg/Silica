@@ -2,6 +2,7 @@ use crate::parser::{Factions, Game, Maps, Modes, Player, TIER_ONE, TIER_THREE, T
 use futures::future::join_all;
 //make stuff into a transaction since plan is to add multiple servers.
 use futures::FutureExt;
+use log::{debug, info, warn};
 use sqlx::postgres::Postgres;
 use sqlx::Pool;
 use std::any::Any;
@@ -26,16 +27,15 @@ pub async fn inserting_info(
     pool: Pool<Postgres>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     //let tasks = Vec::new();
-    println!("Connection done");
+    info!("Connected to the database");
 
     // NOTE This is temporary and only until the game AI is better
 
     if game.get_player_vec().len() < 7 {
-        eprintln!("Not enough players");
+        warn!("Not enough players. Exiting the program.");
         return Ok(());
     }
 
-    //let mut all_tasks = JoinSet::new();
     let bulk_search_future: Pin<Box<JoinHandle<Box<dyn Any + Send>>>> = Box::pin(tokio::spawn({
         let new_thing = game.clone();
         let pool_clone = pool.clone();
@@ -54,9 +54,6 @@ pub async fn inserting_info(
         }
     }));
 
-    //tasks.push(bulk_search_future);
-    //tasks.push(match_id_future);
-
     let mut already_added_steam_ids: HashMap<i64, i32> = HashMap::new();
 
     let mut fps_bulk_insert: Vec<_> = Vec::new();
@@ -69,11 +66,11 @@ pub async fn inserting_info(
     let results = join_all(futures_vec).await;
     let bulk_search_players = match &results[0] {
         Ok(thing) => thing.downcast_ref::<Vec<i32>>().unwrap(),
-        Err(_) => panic!("Spmething went wrong"),
+        Err(_) => panic!("Something went wrong"),
     };
     let match_id = match &results[1] {
         Ok(thing) => thing.downcast_ref::<i32>().unwrap(),
-        Err(_) => panic!("Spmething went wrong"),
+        Err(_) => panic!("Something went wrong"),
     };
     println!("{:?}", now.elapsed());
 
@@ -113,22 +110,21 @@ pub async fn inserting_info(
         bulk_insert_into_matches_players_fps(fps_bulk_insert, pool.clone()).boxed();
 
     //can change this to do a process as we get the details. no need to wait.
-    let returned_elos = join_all(commander_details_futures).await;
+
+    let returned_elos = bulk_search_commander_ids(&commander_bulk_insert, pool.clone()).await;
+
     println!("Got the returned elos now");
 
     let mut elo_list = Vec::new();
     for ((db_player_id, _, player), returned_elo) in zip!(commander_bulk_insert, returned_elos) {
-        match returned_elo {
-            Some(elo) => {
-                elo_list.push(elo);
-            }
-            None => {
-                insert_new_commander.push(
-                    insert_into_rankings_commander(db_player_id.to_owned(), player, pool.clone())
-                        .boxed(),
-                );
-                elo_list.push(1000);
-            }
+        if returned_elo != -1 {
+            elo_list.push(returned_elo);
+        } else {
+            insert_new_commander.push(
+                insert_into_rankings_commander(db_player_id.to_owned(), player, pool.clone())
+                    .boxed(),
+            );
+            elo_list.push(1000);
         }
         win_list.push(player.did_win(game.winning_team));
     }
@@ -189,20 +185,23 @@ fn elo_rating_commander(elo_list: Vec<i32>, win_list: &[bool], k: i32) -> Vec<i3
         }
         new_elo
     } else if elo_list.len() == 3 {
+        info!("This is a three way with initial elos as {elo_list:?}");
         let r_a = elo_list[0];
         let r_b = elo_list[1];
         let r_c = elo_list[2];
         let mut probability_list: [f64; 3] = [0.0, 0.0, 0.0];
-        probability_list[0] = probability(r_a, r_b) + probability(r_a, r_c);
-        probability_list[1] = probability(r_b, r_a) + probability(r_b, r_c);
-        probability_list[2] = probability(r_c, r_a) + probability(r_c, r_b);
+        probability_list[0] = probability(r_b, r_a) + probability(r_c, r_a);
+        probability_list[1] = probability(r_a, r_b) + probability(r_c, r_b);
+        probability_list[2] = probability(r_a, r_c) + probability(r_b, r_c);
         let mut new_elo: Vec<i32> = Vec::new();
+        debug!("The probability list is {probability_list:?}");
 
         for (p, (&w, r)) in zip!(probability_list, win_list, elo_list) {
             let did_win: f64 = if w { 1.0 } else { 0.0 };
-            let new_elo_thing = f64::from(r) + f64::from(k) * 2.0 * (did_win - p / 6.0);
+            let new_elo_thing = f64::from(r) + f64::from(k) * (did_win - p / 3.0);
             new_elo.push(new_elo_thing as i32);
         }
+        info!("The final elos are {new_elo:?}");
         new_elo
     } else {
         panic!("More than expected commanders")
@@ -322,7 +321,7 @@ async fn search_for_commander(
     player: &Player,
     pool: Pool<Postgres>,
 ) -> Option<i32> {
-    println!("Starting the search for commander 1");
+    debug!("Starting the search for commander {}", player.player_name);
     let id_future = sqlx::query!(
         r#"
         SELECT * FROM rankings_commander
@@ -354,7 +353,7 @@ fn get_faction_id(faction: &Factions) -> i32 {
 }
 
 async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
-    println!("Something started for insert into match");
+    debug!("Something started for insert into match");
     let maps_id = HashMap::from([
         (Maps::NarakaCity, 1),
         (Maps::MonumentValley, 2),
@@ -422,7 +421,7 @@ async fn _insert_into_matches_players_commander(
 }
 
 async fn insert_into_rankings_commander(db_player_id: i32, player: &Player, pool: Pool<Postgres>) {
-    println!("Inserting into rankings commanders");
+    debug!("Inserting into rankings commanders");
     let id_future = sqlx::query!(
         r#"
         INSERT INTO rankings_commander ( player_id, faction_id, wins, "ELO" )
@@ -483,10 +482,10 @@ async fn update_commander_elo(
         UPDATE rankings_commander
         SET "ELO" = u.new_elo, wins=wins+u.is_win
         FROM (
-            SELECT unnest($1::integer[]) AS new_elo,
-            unnest($2::integer[]) AS pid,
-            unnest($3::integer[]) AS fid,
-            unnest($4::integer[]) AS is_win
+            SELECT UNNEST($1::integer[]) AS new_elo,
+            UNNEST($2::integer[]) AS pid,
+            UNNEST($3::integer[]) AS fid,
+            UNNEST($4::integer[]) AS is_win
             ) AS u
         WHERE player_id = u.pid AND faction_id = u.fid
         "#,
@@ -515,7 +514,7 @@ async fn update_commander_elo(
 }
 
 async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> Vec<i32> {
-    println!("Something started for bulk player search");
+    debug!("Something started for bulk player search");
     let all_search_ids = sqlx::query!(
         r#"
         SELECT COALESCE(u.id, -1) AS id
@@ -540,27 +539,38 @@ async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> 
     }
 }
 
-//async fn bulk_search_commander_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> Vec<i32> {
-//let all_search_ids = sqlx::query!(
-//r#"
-//SELECT COALESCE(u.id, -1) AS id
-//FROM UNNEST($1::BigInt[]) WITH ORDINALITY as p(id, ord)
-//LEFT JOIN  u ON u.steam_id = p.id
-//ORDER BY p.ord
-//"#,
-//&players
-//.iter()
-//.map(|player| player.player_id)
-//.collect::<Vec<i64>>()
-//)
-//.fetch_all(&pool)
-//.await;
+async fn bulk_search_commander_ids(
+    players: &Vec<(i32, i32, &Player)>,
+    pool: Pool<Postgres>,
+) -> Vec<i32> {
+    let all_search_ids = sqlx::query!(
+        r#"
+        SELECT COALESCE(r."ELO", -1) as elo
+        FROM (
+            SELECT
+                id,
+                faction,
+                ord
+            FROM
+                UNNEST($1::INT[], $2::INT[]) WITH ORDINALITY AS t(id, faction, ord)
+        ) AS u
+        LEFT JOIN rankings_commander r ON r.player_id = u.id AND r.faction_id = u.faction
+        ORDER BY u.ord;
+        "#,
+        &players.iter().map(|x| x.0).collect::<Vec<i32>>(),
+        &players
+            .iter()
+            .map(|a| get_faction_id(&a.2.faction_type))
+            .collect::<Vec<i32>>()
+    )
+    .fetch_all(&pool)
+    .await;
 
-//match all_search_ids {
-//Ok(all_searched) => all_searched
-//.iter()
-//.map(|x| x.id.unwrap_or_else(|| panic!("Could not unwrap id")))
-//.collect::<Vec<_>>(),
-//Err(e) => panic!("could not update due to {e}"),
-//}
-//}
+    match all_search_ids {
+        Ok(all_searched) => all_searched
+            .iter()
+            .map(|x| x.elo.unwrap_or_else(|| panic!("Could not unwrap id")))
+            .collect::<Vec<_>>(),
+        Err(e) => panic!("could not update due to {e}"),
+    }
+}

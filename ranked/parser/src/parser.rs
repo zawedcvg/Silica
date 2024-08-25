@@ -1,7 +1,9 @@
 use chrono::{prelude::*, TimeDelta};
+use log::{error, info, warn};
 //use rayon::prelude::*;
 use regex::Regex;
 use rev_lines::RevLines;
+//use core::panicking::panic;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -513,6 +515,7 @@ impl Game {
 
         let final_commander = data_structure.get_all_commander();
         //let mut all_players = self.get_all_players();
+        info!("The commanders are {final_commander:?}");
 
         for (faction, player_id) in final_commander {
             self.players
@@ -575,7 +578,7 @@ impl Game {
                 let line = match option_line {
                     Ok(line) => line,
                     Err(e) => {
-                        eprintln!("Cannot read line due to {e}");
+                        warn!("Cannot read line due to {e}");
                         continue;
                     }
                 };
@@ -589,7 +592,8 @@ impl Game {
                     ) {
                         Ok(datetime) => datetime,
                         Err(e) => {
-                            panic!("Error in trying to parse round start time: {e}")
+                            error!("Error in trying to parse round start time due to {e}");
+                            panic!()
                         }
                     };
                     did_find_world_win = true;
@@ -602,7 +606,10 @@ impl Game {
                             "%m/%d/%Y - %H:%M:%S",
                         ) {
                             Ok(datetime) => datetime,
-                            Err(e) => panic!("Error in trying to parse round start time {e}"),
+                            Err(e) => {
+                                error!("Error in trying to parse round start time due to {e}");
+                                panic!()
+                            }
                         };
                         current_match.reverse();
                         self.current_match = current_match;
@@ -714,8 +721,7 @@ impl Game {
                     player.update_structure_kill(enemy_structure);
                 }
                 Err(_) => {
-                    //change this, unnecessary thing
-                    //println!("Can't parse due to {e}");
+                    info!("Couldn't parse the player_id. Most likely AI");
                 }
             };
         }
@@ -724,13 +730,19 @@ impl Game {
     fn get_current_map(&mut self, all_lines: &[PathBuf]) {
         let map_regex = match Regex::new(r#"Loading map "(.*)""#) {
             Ok(map_regex) => map_regex,
-            Err(_) => panic!("Error in creating the get_current_map_regex"),
+            Err(_) => {
+                error!("Error in creating the get_current_map_regex");
+                panic!();
+            }
         };
 
         for file in all_lines.iter().rev() {
             let reader = match File::open(file) {
                 Ok(open_file) => RevLines::new(open_file),
-                Err(e) => panic!("Error in opening the log file due to: {e}"),
+                Err(e) => {
+                    error!("Error in opening the log file due to: {e}");
+                    panic!();
+                }
             };
 
             for option_line in reader {
@@ -742,7 +754,7 @@ impl Game {
                         line
                     }
                     Err(e) => {
-                        eprintln!("Cannot read line due to {e}");
+                        warn!("Cannot read line due to {e}");
                         continue;
                     }
                 };
@@ -778,7 +790,10 @@ impl Game {
 
         let victory_regex = match Regex::new(r#"Team "(.*?)" triggered "Victory""#) {
             Ok(map_regex) => map_regex,
-            Err(e) => panic!("Error in creating the get_current_map_regex due to: {e}"),
+            Err(e) => {
+                error!("Error in creating the get_current_map_regex due to: {e}");
+                panic!()
+            }
         };
 
         for line in winning_team_log {
@@ -836,6 +851,7 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     let mut game = Game::default();
     //NOTE Possible to parallelize them, but probably not worth it.
     game.get_current_map(&all_lines);
+    info!("current map is {:?}", game.map);
     game.get_current_match(&all_lines);
     game.get_match_type();
     game.get_winning_team();
@@ -847,7 +863,7 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
 }
 
 pub fn checking_folder(path: &Path) -> Game {
-    println!("The path of the folder is {path:?}");
+    info!("The path of the folder is {path:?}");
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(_) => panic!("Failed to read directory"),
@@ -864,5 +880,40 @@ pub fn checking_folder(path: &Path) -> Game {
 
     log_files.sort();
 
+    info!("Parsing the file");
+
     parse_info(log_files)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use chrono::NaiveDateTime;
+
+    use crate::parser::{checking_folder, Factions, Maps, Modes};
+
+    #[test]
+    fn human_vs_human_single_file() {
+        let game = checking_folder(Path::new("./test_stuff"));
+        assert_eq!(game.match_type, Modes::CentauriVsSol);
+        assert_eq!(game.winning_team, Factions::Centauri);
+        assert_eq!(game.get_player_vec().len(), 20);
+    }
+
+    #[test]
+    fn multiple_file_in_directory() {
+        let game = checking_folder(Path::new("./log_folder"));
+        assert_eq!(game.match_type, Modes::SolVsAlien);
+        assert_eq!(game.winning_team, Factions::Alien);
+        assert_eq!(game.map, Maps::MonumentValley);
+        assert_eq!(
+            game.start_time,
+            NaiveDateTime::parse_from_str("07/23/2024 - 13:31:37", "%m/%d/%Y - %H:%M:%S").unwrap()
+        );
+        assert_eq!(
+            game.end_time,
+            NaiveDateTime::parse_from_str("07/23/2024 - 14:19:26", "%m/%d/%Y - %H:%M:%S").unwrap()
+        );
+    }
 }

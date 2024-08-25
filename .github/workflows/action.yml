@@ -13,3 +13,6 @@ jobs:
       - run: |
           cargo build
         working-directory: ./ranked/parser
+      - run: |
+          cargo test
+        working-directory: ./ranked/parser
