@@ -154,6 +154,7 @@ const QUEEN_UNIT_POINTS: i32 = 100;
 const DATETIME_RANGE: std::ops::Range<usize> = 1..23;
 const ROUND_START_RANGE: std::ops::Range<usize> = 25..54;
 const ROUND_END_RANGE: std::ops::Range<usize> = 25..52;
+const MATCH_TYPE_RANGE: usize = 54;
 const DATETIME_END: usize = 25;
 
 #[derive(Debug, Default, Hash, Eq, PartialEq)]
@@ -621,9 +622,7 @@ impl Game {
     }
 
     fn get_match_type(&mut self) {
-        //TODO const this
-        let match_type_thing = self.current_match[0][54..].trim();
-        //TODO check this
+        let match_type_thing = self.current_match[0][MATCH_TYPE_RANGE..].trim();
         let match_type_regex = Regex::new(r#"\(gametype "(.*?)"\)"#).unwrap();
         //let match_type = match_type_regex.find(match_type_thing).unwrap().as_str();
         let match_type = match_type_regex
