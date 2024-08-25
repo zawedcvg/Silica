@@ -10,10 +10,10 @@ tokio = { version = "1.38.0", features = ["full"] }
 sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "postgres"] }
 dotenv = "0.15.0"
 futures = "0.3.30"
-winapi = { version = "0.3.9", features = ["handleapi", "winbase", "processenv"] }
-libc = "0.2.155"
 rev_lines = "0.3.0"
+flexi_logger = "0.28.5"
+log = "0.4.22"
 
 [profile.release]
-debug = true
+#debug = true
 #debug = 2
