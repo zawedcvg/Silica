@@ -540,7 +540,7 @@ async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> 
 }
 
 async fn bulk_search_commander_ids(
-    players: &Vec<(i32, i32, &Player)>,
+    players: &[(i32, i32, &Player)],
     pool: Pool<Postgres>,
 ) -> Vec<i32> {
     let all_search_ids = sqlx::query!(
