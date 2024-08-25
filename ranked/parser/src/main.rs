@@ -1,6 +1,6 @@
 pub mod inserting_info;
 use dotenv::dotenv;
-use flexi_logger::{FileSpec, Logger, WriteMode};
+use flexi_logger::{Cleanup, Criterion, FileSpec, Logger, Naming, WriteMode};
 use log::{debug, error, info};
 use sqlx::postgres::PgPoolOptions;
 use std::path::Path;
@@ -55,6 +55,14 @@ async fn main() {
                 &record.args()
             )
         })
+        .rotate(
+            Criterion::Size(5_000_000),
+            Naming::TimestampsCustomFormat {
+                current_infix: None,
+                format: "r%Y-%m-%d",
+            },
+            Cleanup::KeepLogAndCompressedFiles(5, 10),
+        )
         .start()
         .unwrap();
 

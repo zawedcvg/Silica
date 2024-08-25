@@ -898,6 +898,14 @@ mod tests {
         assert_eq!(game.match_type, Modes::CentauriVsSol);
         assert_eq!(game.winning_team, Factions::Centauri);
         assert_eq!(game.get_player_vec().len(), 20);
+        assert_eq!(
+            game.start_time,
+            NaiveDateTime::parse_from_str("07/23/2024 - 01:53:40", "%m/%d/%Y - %H:%M:%S").unwrap()
+        );
+        assert_eq!(
+            game.end_time,
+            NaiveDateTime::parse_from_str("07/23/2024 - 02:51:28", "%m/%d/%Y - %H:%M:%S").unwrap()
+        );
     }
 
     #[test]
