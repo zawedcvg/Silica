@@ -929,11 +929,11 @@ mod tests {
 
     #[test]
     fn check_match_type_parsing() {
-        let mut game = Game::default();
-        game.current_match = vec![
+        let mut game = Game {
+        current_match: vec![
             r#"   L 07/22/2024 - 00:18:48: World triggered "Round_Start" (gametype "HUMANS_VS_ALIENS")    "#
-                .to_string(),
-        ];
+                .to_string()], ..Default::default()
+        };
         game.get_match_type();
         assert_eq!(game.match_type, Modes::SolVsAlien);
 
@@ -951,4 +951,42 @@ mod tests {
         game.get_match_type();
         assert_eq!(game.match_type, Modes::CentauriVsSol);
     }
+
+
+    #[test]
+    fn check_winning_team_parsing() {
+
+        let mut game = Game {
+        current_match: vec![
+            r#" L 07/22/2024 - 23:58:42: Team "Alien" triggered "Victory"   "#
+                .to_string()
+        ],
+            ..Default::default()
+        };
+        game.get_winning_team();
+        assert_eq!(game.winning_team, Factions::Alien);
+        game.current_match = vec![
+            r#" L 07/22/2024 - 23:58:42: Team "Centauri" triggered "Victory"   "#
+                .to_string(),
+        ];
+        game.get_winning_team();
+        assert_eq!(game.winning_team, Factions::Centauri);
+
+
+        game.current_match = vec![
+            r#" L 07/22/2024 - 23:58:42: Team "Sol" triggered "Victory"   "#
+                .to_string(),
+        ];
+        game.get_winning_team();
+        assert_eq!(game.winning_team, Factions::Sol);
+    }
+
+    //TODO extensively check commanders parsing
+
+
+
+
+
+    //TODO check parsing of players with abnormal characters
+
 }
