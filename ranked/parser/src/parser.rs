@@ -890,10 +890,10 @@ pub fn checking_file(path: &Path) -> Game {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use chrono::NaiveDateTime;
-    use crate::parser::{checking_file, checking_folder, Factions, Maps, Modes};
     use super::Game;
+    use crate::parser::{checking_file, checking_folder, Factions, Maps, Modes};
+    use chrono::NaiveDateTime;
+    use std::path::Path;
 
     #[test]
     fn human_vs_human_single_file() {
@@ -952,41 +952,28 @@ mod tests {
         assert_eq!(game.match_type, Modes::CentauriVsSol);
     }
 
-
     #[test]
     fn check_winning_team_parsing() {
-
         let mut game = Game {
-        current_match: vec![
-            r#" L 07/22/2024 - 23:58:42: Team "Alien" triggered "Victory"   "#
-                .to_string()
-        ],
+            current_match: vec![
+                r#" L 07/22/2024 - 23:58:42: Team "Alien" triggered "Victory"   "#.to_string(),
+            ],
             ..Default::default()
         };
         game.get_winning_team();
         assert_eq!(game.winning_team, Factions::Alien);
-        game.current_match = vec![
-            r#" L 07/22/2024 - 23:58:42: Team "Centauri" triggered "Victory"   "#
-                .to_string(),
-        ];
+        game.current_match =
+            vec![r#" L 07/22/2024 - 23:58:42: Team "Centauri" triggered "Victory"   "#.to_string()];
         game.get_winning_team();
         assert_eq!(game.winning_team, Factions::Centauri);
 
-
-        game.current_match = vec![
-            r#" L 07/22/2024 - 23:58:42: Team "Sol" triggered "Victory"   "#
-                .to_string(),
-        ];
+        game.current_match =
+            vec![r#" L 07/22/2024 - 23:58:42: Team "Sol" triggered "Victory"   "#.to_string()];
         game.get_winning_team();
         assert_eq!(game.winning_team, Factions::Sol);
     }
 
     //TODO extensively check commanders parsing
 
-
-
-
-
     //TODO check parsing of players with abnormal characters
-
 }
