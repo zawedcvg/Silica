@@ -73,8 +73,6 @@ impl CommanderDataStructure {
     }
 
     fn get_all_commander(&self) -> HashMap<Factions, i64> {
-        //let playing_factions = game.get_playing_factions();
-        //let thing = game []
         let mut max_duration: HashMap<Factions, (i64, TimeDelta)> = HashMap::new();
         for ((id, faction), time_delta) in &self.commander_time {
             max_duration
@@ -884,17 +882,22 @@ pub fn checking_folder(path: &Path) -> Game {
     parse_info(log_files)
 }
 
+pub fn checking_file(path: &Path) -> Game {
+    info!("The path of the folder is {path:?}");
+    info!("Parsing the file");
+    parse_info(vec![path.to_path_buf()])
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
-
     use chrono::NaiveDateTime;
-
-    use crate::parser::{checking_folder, Factions, Maps, Modes};
+    use crate::parser::{checking_file, checking_folder, Factions, Maps, Modes};
+    use super::Game;
 
     #[test]
     fn human_vs_human_single_file() {
-        let game = checking_folder(Path::new("./test_stuff"));
+        let game = checking_file(Path::new("./test_stuff/some.log"));
         assert_eq!(game.match_type, Modes::CentauriVsSol);
         assert_eq!(game.winning_team, Factions::Centauri);
         assert_eq!(game.get_player_vec().len(), 20);
@@ -922,5 +925,30 @@ mod tests {
             game.end_time,
             NaiveDateTime::parse_from_str("07/23/2024 - 14:19:26", "%m/%d/%Y - %H:%M:%S").unwrap()
         );
+    }
+
+    #[test]
+    fn check_match_type_parsing() {
+        let mut game = Game::default();
+        game.current_match = vec![
+            r#"   L 07/22/2024 - 00:18:48: World triggered "Round_Start" (gametype "HUMANS_VS_ALIENS")    "#
+                .to_string(),
+        ];
+        game.get_match_type();
+        assert_eq!(game.match_type, Modes::SolVsAlien);
+
+        game.current_match = vec![
+            r#" L 07/22/2024 - 12:18:45: World triggered "Round_Start" (gametype "HUMANS_VS_HUMANS_VS_ALIENS")  "#
+                .to_string(),
+        ];
+        game.get_match_type();
+        assert_eq!(game.match_type, Modes::CentauriVsSolVsAlien);
+
+        game.current_match = vec![
+            r#" L 07/22/2024 - 12:18:45: World triggered "Round_Start" (gametype "HUMANS_VS_HUMANS")  "#
+                .to_string(),
+        ];
+        game.get_match_type();
+        assert_eq!(game.match_type, Modes::CentauriVsSol);
     }
 }
