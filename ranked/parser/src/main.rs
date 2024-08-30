@@ -40,10 +40,9 @@ async fn main() {
             FileSpec::default()
                 .directory("parser-logs")
                 .suppress_timestamp()
-                .suffix("log"), // Optional: Add a .log suffix to the file name
-                                //.discriminant(discriminant)
-                                //.discriminant(|ts| ts.format("%Y-%m-%d").to_string()) // File name includes only date
+                .suffix("log"),
         )
+        //.duplicate_to_stdout(flexi_logger::Duplicate::All)
         .append()
         .write_mode(WriteMode::BufferAndFlush)
         .format(|w, now, record| {
@@ -83,7 +82,7 @@ async fn main() {
 
     let game = checking_folder(log_folder);
 
-    debug!("{:#?}", game.get_match_length());
+    debug!("Match length is {:#?} seconds", game.get_match_length());
 
     let _ = inserting_info(
         Arc::new(game),
