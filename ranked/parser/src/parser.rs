@@ -535,7 +535,7 @@ impl Game {
             Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" joined team "(.*)""#).unwrap();
 
         for line in joined_team_lines {
-            let joined_player = join_match_regex.captures(line);
+            let joined_player = join_match_regex.captures(line.trim());
             let Some((_, [player_name, _, player_id, _, player_faction])) =
                 joined_player.map(|caps| caps.extract())
             else {
@@ -976,4 +976,24 @@ mod tests {
     //TODO extensively check commanders parsing
 
     //TODO check parsing of players with abnormal characters
+    #[test]
+    fn check_abnormal_characters() {
+        let mut game = Game {
+            current_match: vec![
+                r#"L 07/12/2024 - 00:03:57: "ßЉбббппѐѐ<21312><321321312><>" joined team "Alien""#.to_string(),
+r#"L 07/12/2024 - 00:09:33: "ßЉбббппѐѐ<21312><321321312><Alien>" triggered "structure_kill" (structure "Node") (struct_team "Alien")"#.to_string(),
+r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУТУХТУХХ<123212><3122211><Sol>" with "Goliath" (dmgtype "Collision") (victim "Soldier_Commando")"#.to_string(),
+            ],
+            ..Default::default()
+        };
+        game.get_all_players();
+        game.process_structure_kills();
+        game.process_kills();
+        let abnormal_player = game.players.get(&(321321312_i64, Factions::Alien)).unwrap();
+        assert_eq!(abnormal_player.faction_type, Factions::Alien);
+        assert_eq!(abnormal_player.player_name, "ßЉбббппѐѐ");
+        assert_eq!(abnormal_player.structure_kill[0], 1);
+        assert_eq!(abnormal_player.unit_kill[1], 1);
+        assert_eq!(abnormal_player.points, 20);
+    }
 }
