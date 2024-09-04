@@ -105,6 +105,8 @@ pub struct Player {
     pub death: i32,
     pub points: i32,
     pub winner: bool,
+    //pub last_entered_time: TimeDelta,
+    //pub duration_played: TimeDelta
 }
 
 #[derive(Debug)]
@@ -274,7 +276,8 @@ impl Player {
         let is_enemy = if enemy_faction != self.faction_type {
             1
         } else {
-        -1};
+            -1
+        };
         self.total_unit_kills += is_enemy;
         match unit {
             u if TIER_ONE_UNITS.contains(&u) => {
@@ -548,20 +551,13 @@ impl Game {
 
             let faction_type = Game::get_factions(player_faction);
 
+            let player_id = player_id
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("Error in parsing i64"));
+
             self.players.insert(
-                (
-                    player_id
-                        .parse::<i64>()
-                        .unwrap_or_else(|_| panic!("Error in parsing i64")),
-                    faction_type,
-                ),
-                Player::new(
-                    player_id
-                        .parse::<i64>()
-                        .unwrap_or_else(|_| panic!("Error in parsing i64")),
-                    player_name.to_string(),
-                    faction_type,
-                ),
+                (player_id, faction_type),
+                Player::new(player_id, player_name.to_string(), faction_type),
             );
         }
     }
