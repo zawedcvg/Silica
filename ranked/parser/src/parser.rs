@@ -73,8 +73,6 @@ impl CommanderDataStructure {
     }
 
     fn get_all_commander(&self) -> HashMap<Factions, i64> {
-        //let playing_factions = game.get_playing_factions();
-        //let thing = game []
         let mut max_duration: HashMap<Factions, (i64, TimeDelta)> = HashMap::new();
         for ((id, faction), time_delta) in &self.commander_time {
             max_duration
@@ -107,6 +105,8 @@ pub struct Player {
     pub death: i32,
     pub points: i32,
     pub winner: bool,
+    //pub last_entered_time: TimeDelta,
+    //pub duration_played: TimeDelta
 }
 
 #[derive(Debug)]
@@ -272,23 +272,28 @@ impl Player {
         }
     }
 
-    fn update_unit_kill(&mut self, unit: &str) {
-        self.total_unit_kills += 1;
+    fn update_unit_kill(&mut self, unit: &str, enemy_faction: Factions) {
+        let is_enemy = if enemy_faction != self.faction_type {
+            1
+        } else {
+            -1
+        };
+        self.total_unit_kills += is_enemy;
         match unit {
             u if TIER_ONE_UNITS.contains(&u) => {
-                self.unit_kill[TIER_ONE] += 1;
-                self.points += TIER_ONE_UNIT_POINTS;
+                self.unit_kill[TIER_ONE] += is_enemy;
+                self.points += TIER_ONE_UNIT_POINTS * is_enemy;
             }
             u if TIER_TWO_UNITS.contains(&u) => {
-                self.unit_kill[TIER_TWO] += 1;
-                self.points += TIER_TWO_UNIT_POINTS;
+                self.unit_kill[TIER_TWO] += is_enemy;
+                self.points += TIER_TWO_UNIT_POINTS * is_enemy;
             }
             u if TIER_THREE_UNITS.contains(&u) => {
-                self.unit_kill[TIER_THREE] += 1;
+                self.unit_kill[TIER_THREE] += is_enemy;
                 if u == "Queen" {
-                    self.points += QUEEN_UNIT_POINTS;
+                    self.points += QUEEN_UNIT_POINTS * is_enemy;
                 } else {
-                    self.points += TIER_THREE_UNIT_POINTS;
+                    self.points += TIER_THREE_UNIT_POINTS * is_enemy;
                 }
             }
             _ => (),
@@ -537,7 +542,7 @@ impl Game {
             Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" joined team "(.*)""#).unwrap();
 
         for line in joined_team_lines {
-            let joined_player = join_match_regex.captures(line);
+            let joined_player = join_match_regex.captures(line.trim());
             let Some((_, [player_name, _, player_id, _, player_faction])) =
                 joined_player.map(|caps| caps.extract())
             else {
@@ -546,20 +551,13 @@ impl Game {
 
             let faction_type = Game::get_factions(player_faction);
 
+            let player_id = player_id
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("Error in parsing i64"));
+
             self.players.insert(
-                (
-                    player_id
-                        .parse::<i64>()
-                        .unwrap_or_else(|_| panic!("Error in parsing i64")),
-                    faction_type,
-                ),
-                Player::new(
-                    player_id
-                        .parse::<i64>()
-                        .unwrap_or_else(|_| panic!("Error in parsing i64")),
-                    player_name.to_string(),
-                    faction_type,
-                ),
+                (player_id, faction_type),
+                Player::new(player_id, player_name.to_string(), faction_type),
             );
         }
     }
@@ -665,13 +663,14 @@ impl Game {
 
             if let Ok(player_id) = player_id.parse::<i64>() {
                 let faction_type = Game::get_factions(player_faction);
+                let enemy_faction_type = Game::get_factions(enemy_faction);
                 let player = self
                     .players
                     .entry((player_id, faction_type))
                     .or_insert_with(|| {
                         Player::new(player_id, player_name.to_string(), faction_type)
                     });
-                player.update_unit_kill(victim);
+                player.update_unit_kill(victim, enemy_faction_type);
             };
 
             if let Ok(enemy_id) = enemy_id.parse::<i64>() {
@@ -884,17 +883,22 @@ pub fn checking_folder(path: &Path) -> Game {
     parse_info(log_files)
 }
 
+pub fn checking_file(path: &Path) -> Game {
+    info!("The path of the folder is {path:?}");
+    info!("Parsing the file");
+    parse_info(vec![path.to_path_buf()])
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
+    use super::Game;
+    use crate::parser::{checking_file, checking_folder, Factions, Maps, Modes};
     use chrono::NaiveDateTime;
-
-    use crate::parser::{checking_folder, Factions, Maps, Modes};
+    use std::path::Path;
 
     #[test]
     fn human_vs_human_single_file() {
-        let game = checking_folder(Path::new("./test_stuff"));
+        let game = checking_file(Path::new("./test_stuff/some.log"));
         assert_eq!(game.match_type, Modes::CentauriVsSol);
         assert_eq!(game.winning_team, Factions::Centauri);
         assert_eq!(game.get_player_vec().len(), 20);
@@ -922,5 +926,78 @@ mod tests {
             game.end_time,
             NaiveDateTime::parse_from_str("07/23/2024 - 14:19:26", "%m/%d/%Y - %H:%M:%S").unwrap()
         );
+    }
+
+    #[test]
+    fn check_match_type_parsing() {
+        let mut game = Game {
+        current_match: vec![
+            r#"   L 07/22/2024 - 00:18:48: World triggered "Round_Start" (gametype "HUMANS_VS_ALIENS")    "#
+                .to_string()], ..Default::default()
+        };
+        game.get_match_type();
+        assert_eq!(game.match_type, Modes::SolVsAlien);
+
+        game.current_match = vec![
+            r#" L 07/22/2024 - 12:18:45: World triggered "Round_Start" (gametype "HUMANS_VS_HUMANS_VS_ALIENS")  "#
+                .to_string(),
+        ];
+        game.get_match_type();
+        assert_eq!(game.match_type, Modes::CentauriVsSolVsAlien);
+
+        game.current_match = vec![
+            r#" L 07/22/2024 - 12:18:45: World triggered "Round_Start" (gametype "HUMANS_VS_HUMANS")  "#
+                .to_string(),
+        ];
+        game.get_match_type();
+        assert_eq!(game.match_type, Modes::CentauriVsSol);
+    }
+
+    #[test]
+    fn check_winning_team_parsing() {
+        let mut game = Game {
+            current_match: vec![
+                r#" L 07/22/2024 - 23:58:42: Team "Alien" triggered "Victory"   "#.to_string(),
+            ],
+            ..Default::default()
+        };
+        game.get_winning_team();
+        assert_eq!(game.winning_team, Factions::Alien);
+        game.current_match =
+            vec![r#" L 07/22/2024 - 23:58:42: Team "Centauri" triggered "Victory"   "#.to_string()];
+        game.get_winning_team();
+        assert_eq!(game.winning_team, Factions::Centauri);
+
+        game.current_match =
+            vec![r#" L 07/22/2024 - 23:58:42: Team "Sol" triggered "Victory"   "#.to_string()];
+        game.get_winning_team();
+        assert_eq!(game.winning_team, Factions::Sol);
+    }
+
+    //TODO extensively check commanders parsing
+
+    //TODO check parsing of players with abnormal characters
+    #[test]
+    fn check_abnormal_characters() {
+        let mut game = Game {
+            current_match: vec![
+                r#"L 07/12/2024 - 00:03:57: "ßЉбббппѐѐ<21312><321321312><>" joined team "Alien""#.to_string(),
+r#"L 07/12/2024 - 00:09:33: "ßЉбббппѐѐ<21312><321321312><Alien>" triggered "structure_kill" (structure "Node") (struct_team "Alien")"#.to_string(),
+r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУТУХТУХХ<123212><3122211><Sol>" with "Goliath" (dmgtype "Collision") (victim "Soldier_Commando")"#.to_string(),
+r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУХТУХХ<13212><31122211><Alien>" with "Goliath" (dmgtype "Collision") (victim "Goliath")"#.to_string(),
+            ],
+            ..Default::default()
+        };
+        game.get_all_players();
+        game.process_structure_kills();
+        game.process_kills();
+        println!("{:#?}", game.get_player_vec());
+        let abnormal_player = game.players.get(&(321321312_i64, Factions::Alien)).unwrap();
+        assert_eq!(abnormal_player.faction_type, Factions::Alien);
+        assert_eq!(abnormal_player.player_name, "ßЉбббппѐѐ");
+        assert_eq!(abnormal_player.structure_kill[0], 1);
+        assert_eq!(abnormal_player.unit_kill[1], 1);
+        assert_eq!(abnormal_player.unit_kill[2], -1);
+        assert_eq!(abnormal_player.points, -30);
     }
 }
