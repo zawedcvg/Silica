@@ -407,6 +407,15 @@ fn get_byte_indices(line: &str, range: std::ops::Range<usize>) -> std::ops::Rang
 }
 
 impl Game {
+    pub fn process_player_durations(&mut self) {
+        for player in self.players.values_mut() {
+            if player.is_in_game {
+                player.last_left_time = self.end_time;
+                player.duration_played += player.last_left_time - player.last_entered_time;
+            }
+        }
+    }
+
     pub fn get_player_vec(&self) -> Vec<&Player> {
         self.players.values().collect()
     }
@@ -464,6 +473,9 @@ impl Game {
                 };
 
                 let faction_type = Game::get_factions(player_faction);
+                if faction_type == Factions::Wildlife {
+                    continue;
+                }
 
                 let player_id = player_id.parse::<i64>().unwrap_or_else(|e| {
                     panic!("Could not parse player id in player disconnect due to {e}")
@@ -503,6 +515,9 @@ impl Game {
                 };
 
                 let faction_type = Game::get_factions(player_faction);
+                if faction_type == Factions::Wildlife {
+                    continue;
+                }
                 let player_id = player_id.parse::<i64>().unwrap_or_else(|e| {
                     panic!("error in parsing the commander player id due to : {e}")
                 });
@@ -536,7 +551,6 @@ impl Game {
         }
 
         let final_commander = data_structure.get_all_commander();
-        //let mut all_players = self.get_all_players();
         info!("The commanders are {final_commander:?}");
 
         for (faction, player_id) in final_commander {
@@ -565,6 +579,10 @@ impl Game {
                 joined_player.map(|caps| caps.extract())
             {
                 let faction_type = Game::get_factions(player_faction);
+
+                if faction_type == Factions::Wildlife {
+                    continue;
+                }
 
                 let player_id = player_id
                     .parse::<i64>()
@@ -606,6 +624,10 @@ impl Game {
             {
                 let faction_type = Game::get_factions(player_faction);
 
+                if faction_type == Factions::Wildlife {
+                    continue;
+                }
+
                 let player_id = player_id
                     .parse::<i64>()
                     .unwrap_or_else(|_| panic!("Error in parsing i64"));
@@ -632,7 +654,7 @@ impl Game {
                             faction_type,
                             self.start_time,
                             disconnect_time,
-                            true,
+                            false,
                         )
                     });
                 player.is_in_game = false;
@@ -743,6 +765,9 @@ impl Game {
 
             if let Ok(player_id) = player_id.parse::<i64>() {
                 let faction_type = Game::get_factions(player_faction);
+                if faction_type == Factions::Wildlife {
+                    continue;
+                }
                 let enemy_faction_type = Game::get_factions(enemy_faction);
                 let player = self
                     .players
@@ -762,6 +787,9 @@ impl Game {
 
             if let Ok(enemy_id) = enemy_id.parse::<i64>() {
                 let enemy_faction_type = Game::get_factions(enemy_faction);
+                if enemy_faction_type == Factions::Wildlife {
+                    continue;
+                }
                 let enemy_player = self
                     .players
                     .entry((enemy_id, enemy_faction_type))
@@ -800,6 +828,10 @@ impl Game {
             };
 
             let faction_type = Game::get_factions(player_faction);
+
+            if faction_type == Factions::Wildlife {
+                continue;
+            }
 
             match player_id.parse::<i64>() {
                 Ok(player_id) => {
@@ -962,6 +994,7 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     game.process_kills();
     game.process_structure_kills();
     game.get_commanders();
+    game.process_player_durations();
     game
 }
 
@@ -1004,7 +1037,6 @@ mod tests {
     #[test]
     fn human_vs_human_single_file() {
         let game = checking_file(Path::new("./test_stuff/some.log"));
-        println!("{:#?}", game.get_player_vec());
         assert_eq!(game.match_type, Modes::CentauriVsSol);
         assert_eq!(game.winning_team, Factions::Centauri);
         assert_eq!(game.get_player_vec().len(), 20);
@@ -1082,7 +1114,6 @@ mod tests {
 
     //TODO extensively check commanders parsing
 
-    //TODO check parsing of players with abnormal characters
     #[test]
     fn check_abnormal_characters() {
         let mut game = Game {
@@ -1097,7 +1128,6 @@ r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed
         game.process_all_players();
         game.process_structure_kills();
         game.process_kills();
-        println!("{:#?}", game.get_player_vec());
         let abnormal_player = game.players.get(&(321321312_i64, Factions::Alien)).unwrap();
         assert_eq!(abnormal_player.faction_type, Factions::Alien);
         assert_eq!(abnormal_player.player_name, "ßЉбббппѐѐ");
