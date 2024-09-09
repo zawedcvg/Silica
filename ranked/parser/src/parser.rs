@@ -105,8 +105,10 @@ pub struct Player {
     pub death: i32,
     pub points: i32,
     pub winner: bool,
-    //pub last_entered_time: TimeDelta,
-    //pub duration_played: TimeDelta
+    is_in_game: bool,
+    pub last_entered_time: NaiveDateTime,
+    pub last_left_time: NaiveDateTime,
+    pub duration_played: TimeDelta,
 }
 
 #[derive(Debug)]
@@ -300,7 +302,14 @@ impl Player {
         }
     }
 
-    fn new(player_id: i64, player_name: String, faction_type: Factions) -> Self {
+    fn new(
+        player_id: i64,
+        player_name: String,
+        faction_type: Factions,
+        last_entered_time: NaiveDateTime,
+        last_left_time: NaiveDateTime,
+        is_in_game: bool,
+    ) -> Self {
         Player {
             player_id,
             player_name,
@@ -313,6 +322,10 @@ impl Player {
             death: 0,
             points: 0,
             winner: false,
+            last_entered_time,
+            last_left_time,
+            duration_played: TimeDelta::zero(),
+            is_in_game,
         }
     }
 
@@ -500,6 +513,9 @@ impl Game {
                         player_id,
                         player_name.to_string(),
                         faction_type,
+                        self.start_time,
+                        self.end_time,
+                        false,
                     ));
 
                 if role == "Commander" {
@@ -530,35 +546,99 @@ impl Game {
         }
     }
 
-    fn get_all_players(&mut self) {
+    fn process_all_players(&mut self) {
         let joined_team_lines = self
             .current_match
             .iter()
             .filter(|x| remove_chat_messages(x))
-            .filter(|x| x.contains(JOINED_TEAM))
-            .map(|x| remove_date_data(x));
+            .filter(|x| x.contains(JOINED_TEAM) || x.contains(DISCONNECTED));
 
         let join_match_regex =
             Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" joined team "(.*)""#).unwrap();
 
+        let player_disconnect = Regex::new(r#""(.*?)<(.*?)><(.*?)><(.*?)>" disconnected"#).unwrap();
+
         for line in joined_team_lines {
             let joined_player = join_match_regex.captures(line.trim());
-            let Some((_, [player_name, _, player_id, _, player_faction])) =
+
+            if let Some((_, [player_name, _, player_id, _, player_faction])) =
                 joined_player.map(|caps| caps.extract())
-            else {
-                continue;
-            };
+            {
+                let faction_type = Game::get_factions(player_faction);
 
-            let faction_type = Game::get_factions(player_faction);
+                let player_id = player_id
+                    .parse::<i64>()
+                    .unwrap_or_else(|_| panic!("Error in parsing i64"));
 
-            let player_id = player_id
-                .parse::<i64>()
-                .unwrap_or_else(|_| panic!("Error in parsing i64"));
+                let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
 
-            self.players.insert(
-                (player_id, faction_type),
-                Player::new(player_id, player_name.to_string(), faction_type),
-            );
+                let start_time = match NaiveDateTime::parse_from_str(
+                    line[byte_matched_datetime_range].trim(),
+                    "%m/%d/%Y - %H:%M:%S",
+                ) {
+                    Ok(datetime) => datetime,
+                    Err(e) => {
+                        error!("Error in trying to parse round start time due to {e}");
+                        panic!();
+                    }
+                };
+                let player = self
+                    .players
+                    .entry((player_id, faction_type))
+                    .or_insert_with(|| {
+                        Player::new(
+                            player_id,
+                            player_name.to_string(),
+                            faction_type,
+                            start_time,
+                            NaiveDateTime::MAX,
+                            true,
+                        )
+                    });
+                player.is_in_game = true;
+                player.last_entered_time = start_time;
+                player.last_left_time = NaiveDateTime::MAX;
+            }
+
+            let pattern_capture = player_disconnect.captures(line);
+            if let Some((_, [player_name, _, player_id, player_faction])) =
+                pattern_capture.map(|caps| caps.extract())
+            {
+                let faction_type = Game::get_factions(player_faction);
+
+                let player_id = player_id
+                    .parse::<i64>()
+                    .unwrap_or_else(|_| panic!("Error in parsing i64"));
+
+                let byte_matched_datetime_range = get_byte_indices(line, DATETIME_RANGE);
+
+                let disconnect_time = match NaiveDateTime::parse_from_str(
+                    line[byte_matched_datetime_range].trim(),
+                    "%m/%d/%Y - %H:%M:%S",
+                ) {
+                    Ok(datetime) => datetime,
+                    Err(e) => {
+                        error!("Error in trying to parse round start time due to {e}");
+                        panic!();
+                    }
+                };
+                let player = self
+                    .players
+                    .entry((player_id, faction_type))
+                    .or_insert_with(|| {
+                        Player::new(
+                            player_id,
+                            player_name.to_string(),
+                            faction_type,
+                            self.start_time,
+                            disconnect_time,
+                            true,
+                        )
+                    });
+                player.is_in_game = false;
+                player.last_left_time = disconnect_time;
+                player.duration_played += player.last_left_time - player.last_entered_time;
+            }
         }
     }
 
@@ -668,7 +748,14 @@ impl Game {
                     .players
                     .entry((player_id, faction_type))
                     .or_insert_with(|| {
-                        Player::new(player_id, player_name.to_string(), faction_type)
+                        Player::new(
+                            player_id,
+                            player_name.to_string(),
+                            faction_type,
+                            self.start_time,
+                            self.end_time,
+                            false,
+                        )
                     });
                 player.update_unit_kill(victim, enemy_faction_type);
             };
@@ -679,7 +766,14 @@ impl Game {
                     .players
                     .entry((enemy_id, enemy_faction_type))
                     .or_insert_with(|| {
-                        Player::new(enemy_id, enemy_name.to_string(), enemy_faction_type)
+                        Player::new(
+                            enemy_id,
+                            enemy_name.to_string(),
+                            enemy_faction_type,
+                            self.start_time,
+                            self.end_time,
+                            false,
+                        )
                     });
                 enemy_player.update_death(victim);
             };
@@ -714,7 +808,14 @@ impl Game {
                         .players
                         .entry((player_id, faction_type))
                         .or_insert_with(|| {
-                            Player::new(player_id, player_name.to_string(), faction_type)
+                            Player::new(
+                                player_id,
+                                player_name.to_string(),
+                                faction_type,
+                                self.start_time,
+                                self.end_time,
+                                false,
+                            )
                         });
                     player.update_structure_kill(enemy_structure);
                 }
@@ -734,7 +835,10 @@ impl Game {
             }
         };
 
+        let mut files_read = Vec::new();
+
         for file in all_lines.iter().rev() {
+            files_read.push(file);
             let reader = match File::open(file) {
                 Ok(open_file) => RevLines::new(open_file),
                 Err(e) => {
@@ -771,6 +875,7 @@ impl Game {
                         } else if map_str == "GreatErg" {
                             self.map = Maps::GreatErg;
                         }
+                        info!("Files read for finding the current map are {files_read:?}");
                         return;
                     }
                     None => continue,
@@ -836,7 +941,7 @@ fn remove_chat_messages(line: &str) -> bool {
     !words.any(|i| chat_keywords.contains(&i))
 }
 
-fn remove_date_data(line: &str) -> &str {
+fn _remove_date_data(line: &str) -> &str {
     if line.len() > DATETIME_END {
         let byte_corrected_datetimeend = get_byte_indices(line, DATETIME_END..line.len());
         &line.trim()[byte_corrected_datetimeend]
@@ -853,7 +958,7 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     game.get_current_match(&all_lines);
     game.get_match_type();
     game.get_winning_team();
-    game.get_all_players();
+    game.process_all_players();
     game.process_kills();
     game.process_structure_kills();
     game.get_commanders();
@@ -899,6 +1004,7 @@ mod tests {
     #[test]
     fn human_vs_human_single_file() {
         let game = checking_file(Path::new("./test_stuff/some.log"));
+        println!("{:#?}", game.get_player_vec());
         assert_eq!(game.match_type, Modes::CentauriVsSol);
         assert_eq!(game.winning_team, Factions::Centauri);
         assert_eq!(game.get_player_vec().len(), 20);
@@ -988,7 +1094,7 @@ r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed
             ],
             ..Default::default()
         };
-        game.get_all_players();
+        game.process_all_players();
         game.process_structure_kills();
         game.process_kills();
         println!("{:#?}", game.get_player_vec());
