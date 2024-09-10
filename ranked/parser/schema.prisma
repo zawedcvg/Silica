@@ -11,16 +11,13 @@ datasource db {
 }
 
 model factions {
-  id      Int    @id
-  name    String @db.VarChar(45)
-  modes   modes? @relation(fields: [modesId], references: [id])
-  modesId Int?
+  id   Int    @id
+  name String @db.VarChar(45)
 }
 
 model modes {
-  id       Int        @id
-  name     String     @db.VarChar(45)
-  factions factions[]
+  id   Int    @id
+  name String @db.VarChar(45)
 }
 
 model maps {
@@ -41,12 +38,11 @@ model matches {
   userId               Int?
 }
 
+//improve this later? can be moved into two different
 model matches_players_fps {
   player_id                       Int
   match_id                        Int
   faction_id                      Int
-  //add damage/score details. could go with just total kills right now, though damage is a better metric. But no way to get damage against AI.
-  // a bit of a non-trivial issue, as going with just kills equates killing collosus = killing wasp. Upto discussion
   tier_one_kills                  Int
   tier_two_kills                  Int
   tier_three_kills                Int
@@ -68,20 +64,23 @@ model matches_players_commander {
 }
 
 model rankings_commander {
-  player_id  Int
-  faction_id Int
-  wins       Int
-  ELO        Int @default(1000) //whatever works
+  player_id   Int
+  faction_id  Int
+  wins        Int   @default(0)
+  losses      Int   @default(0)
+  rating      Float @default(25)
+  uncertainty Float @default(8.3333)
 
   @@id([player_id, faction_id])
 }
 
 model rankings_fps {
-  player_id  Int
-  faction_id Int
+  player_id    Int
+  faction_id   Int
   //add same damage criteria here.
-  ELO        Int
-  wins       Int
+  wins         Int @default(0)
+  losses       Int @default(0)
+  total_points Int @default(0)
 
   @@id([player_id, faction_id])
 }
