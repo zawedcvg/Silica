@@ -76,10 +76,13 @@ pub async fn inserting_info(
         Ok(thing) => thing.downcast_ref::<i32>().unwrap(),
         Err(_) => panic!("Something went wrong"),
     };
-    println!("{:?}", now.elapsed());
+    info!("Time elapsed in waiting for the mmmatch and the results of bulk_search players {:?}", now.elapsed());
 
+    // WARN Why am I doing this mess. in DB check if exists then return, else just insert and return? no
+    // point in doing all this
     for (&player, &query_output) in game.get_player_vec().iter().zip(bulk_search_players) {
         let db_player_id: i32;
+        //db_player_id
         if query_output != PLAYER_NOT_FOUND {
             db_player_id = query_output
         } else {
@@ -467,6 +470,52 @@ async fn update_commander_elo(
     .bind(new_ratings.iter().map(|a| a[0].rating).collect::<Vec<f64>>())
     .bind(new_ratings.iter().map(|a| a[0].uncertainty).collect::<Vec<f64>>())
     .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
+    .bind(
+        to_insert_thing
+            .iter()
+            .map(|a| get_faction_id(&a.2.faction_type))
+            .collect::<Vec<i32>>(),
+    )
+    .bind(
+        win_list
+            .iter()
+            .map(|&x| if x == 1 { 1 } else { 0 })
+            .collect::<Vec<i32>>(),
+    )
+    .execute(&pool)
+    .await;
+
+    match id_future {
+        Ok(_) => (),
+        Err(e) => panic!("Could not add commanders due to {e}"),
+    };
+}
+
+
+async fn update_ranking_fps(
+    total_points: Vec<i32>,
+    to_insert_thing: &[(i32, i32, &Player)],
+    win_list: &[usize],
+    pool: Pool<Postgres>,
+) {
+    let id_future = sqlx::query(
+        r#"
+        UPDATE rankings_fps
+        SET total_points = total_points + u.total_points,
+            wins = wins + u.is_win,
+            uncertainty = u.new_uncertainty
+        FROM (
+            SELECT
+                UNNEST($1::integer[]) AS total_points,
+                UNNEST($2::integer[]) AS pid,
+                UNNEST($3::integer[]) AS fid,
+                UNNEST($4::integer[]) AS is_win
+        ) AS u
+        WHERE player_id = u.pid AND faction_id = u.fid
+        "#,
+    )
+    //.bind(new_ratings.iter().map(|a| a[0].rating).collect::<Vec<f64>>())
+    .bind(total_points)
     .bind(
         to_insert_thing
             .iter()
