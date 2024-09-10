@@ -1,5 +1,9 @@
 use crate::parser::{Factions, Game, Maps, Modes, Player, TIER_ONE, TIER_THREE, TIER_TWO};
 use futures::future::join_all;
+use skillratings::{
+    weng_lin::{weng_lin_multi_team, WengLinConfig, WengLinRating},
+    MultiTeamOutcome,
+};
 //make stuff into a transaction since plan is to add multiple servers.
 use futures::FutureExt;
 use log::{debug, info, warn};
@@ -82,6 +86,7 @@ pub async fn inserting_info(
             match already_added_steam_ids.get(&player.player_id) {
                 Some(&id) => db_player_id = id,
                 None => {
+                    //Can mmake this better by using bulk
                     db_player_id = insert_into_players(player, pool.clone()).await;
                     already_added_steam_ids.insert(player.player_id, db_player_id);
                 }
@@ -116,19 +121,23 @@ pub async fn inserting_info(
     println!("Got the returned elos now");
 
     let mut elo_list = Vec::new();
-    for ((db_player_id, _, player), returned_elo) in zip!(commander_bulk_insert, returned_elos) {
-        if returned_elo != -1 {
-            elo_list.push(returned_elo);
+    for ((db_player_id, _, player), (returned_rating, returned_uncertainty)) in zip!(commander_bulk_insert, returned_elos) {
+        if returned_rating != -1.0 {
+            elo_list.push((returned_rating, returned_uncertainty));
         } else {
             insert_new_commander.push(
                 insert_into_rankings_commander(db_player_id.to_owned(), player, pool.clone())
                     .boxed(),
             );
-            elo_list.push(1000);
+            elo_list.push((25.0, 8.3333));
         }
-        win_list.push(player.did_win(game.winning_team));
+        if player.did_win(game.winning_team) {
+            win_list.push(1);
+        } else {
+            win_list.push(2);
+        }
     }
-    let new_elos = elo_rating_commander(elo_list, &win_list, 30);
+    let new_elos = elo_rating_commander(elo_list, &win_list);
 
     println!("{:?}", new_elos);
 
@@ -136,7 +145,7 @@ pub async fn inserting_info(
         bulk_insert_into_matches_players_commander(&commander_bulk_insert, pool.clone()).boxed();
 
     let a =
-        update_commander_elo(&new_elos, &commander_bulk_insert, &win_list, pool.clone()).boxed();
+        update_commander_elo(&new_elos[..], &commander_bulk_insert, &win_list, pool.clone()).boxed();
 
     println!("Waiting for commander elo update");
 
@@ -148,64 +157,27 @@ pub async fn inserting_info(
     Ok(())
 }
 
-fn probability(rating1: i32, rating2: i32) -> f64 {
-    let base: f64 = 10.0;
-    1.0 * 1.0 / (1.0 + 1.0 * base.powf(1.0 * (f64::from(rating1 - rating2) / 400.0)))
-}
+fn elo_rating_commander(elo_list: Vec<(f64, f64)>, win_list: &[usize]) -> Vec<Vec<WengLinRating>> {
+    let mut team_list: Vec<_> = Vec::new();
 
-fn elo_rating_commander(elo_list: Vec<i32>, win_list: &[bool], k: i32) -> Vec<i32> {
-    //refactor this entire thing. lot of duplicated code
-    let mut new_elo: Vec<i32> = Vec::new();
-    if elo_list.is_empty() {
-        new_elo
-    } else if elo_list.len() < 3 {
-        let r_a = elo_list[0];
-
-        let r_b = if elo_list.len() == 1 {
-            1000
-        } else {
-            elo_list[1]
-        };
-        let p_b_win = probability(r_a, r_b);
-        let p_a_win = probability(r_b, r_a);
-        let new_elo_ra: f64;
-        let new_elo_rb: f64;
-
-        if win_list[0] {
-            new_elo_ra = f64::from(r_a) + f64::from(k) * (1.0 - p_a_win);
-            new_elo_rb = f64::from(r_b) + f64::from(k) * (0.0 - p_b_win);
-        } else {
-            new_elo_ra = f64::from(r_a) + f64::from(k) * (0.0 - p_a_win);
-            new_elo_rb = f64::from(r_b) + f64::from(k) * (1.0 - p_b_win);
-        }
-
-        new_elo.push(new_elo_ra as i32);
-        if elo_list.len() == 2 {
-            new_elo.push(new_elo_rb as i32);
-        }
-        new_elo
-    } else if elo_list.len() == 3 {
-        info!("This is a three way with initial elos as {elo_list:?}");
-        let r_a = elo_list[0];
-        let r_b = elo_list[1];
-        let r_c = elo_list[2];
-        let mut probability_list: [f64; 3] = [0.0, 0.0, 0.0];
-        probability_list[0] = probability(r_b, r_a) + probability(r_c, r_a);
-        probability_list[1] = probability(r_a, r_b) + probability(r_c, r_b);
-        probability_list[2] = probability(r_a, r_c) + probability(r_b, r_c);
-        let mut new_elo: Vec<i32> = Vec::new();
-        debug!("The probability list is {probability_list:?}");
-
-        for (p, (&w, r)) in zip!(probability_list, win_list, elo_list) {
-            let did_win: f64 = if w { 1.0 } else { 0.0 };
-            let new_elo_thing = f64::from(r) + f64::from(k) * (did_win - p / 3.0);
-            new_elo.push(new_elo_thing as i32);
-        }
-        info!("The final elos are {new_elo:?}");
-        new_elo
-    } else {
-        panic!("More than expected commanders")
+    for (index, &(rating, uncertainty)) in elo_list.iter().enumerate() {
+        let rating_vec = vec![WengLinRating {
+            rating,
+            uncertainty,
+        }]; // Create the vector here
+        team_list.push((rating_vec, MultiTeamOutcome::new(win_list[index])));
     }
+
+    //let new_teams = weng_lin_multi_team(&team_list[..], &WengLinConfig::new());
+    let new_teams = weng_lin_multi_team(
+        &team_list
+            .iter()
+            .map(|(ratings, outcome)| (&ratings[..], *outcome))
+            .collect::<Vec<_>>()[..],
+        &WengLinConfig::new(),
+    );
+    new_teams
+
 }
 
 async fn insert_into_players(player: &Player, pool: Pool<Postgres>) -> i32 {
@@ -320,7 +292,7 @@ async fn search_for_commander(
     db_player_id: i32,
     player: &Player,
     pool: Pool<Postgres>,
-) -> Option<i32> {
+) -> Option<(f64, f64)> {
     debug!("Starting the search for commander {}", player.player_name);
     let id_future = sqlx::query!(
         r#"
@@ -335,7 +307,7 @@ async fn search_for_commander(
     .await;
 
     match id_future {
-        Ok(id) => Some(id.ELO),
+        Ok(id) => Some((id.rating, id.uncertainty)),
         Err(_) => None,
     }
 }
@@ -424,13 +396,11 @@ async fn insert_into_rankings_commander(db_player_id: i32, player: &Player, pool
     debug!("Inserting into rankings commanders");
     let id_future = sqlx::query!(
         r#"
-        INSERT INTO rankings_commander ( player_id, faction_id, wins, "ELO" )
-        VALUES ( $1, $2, $3, $4 )
+        INSERT INTO rankings_commander ( player_id, faction_id )
+        VALUES ( $1, $2 )
         "#,
         db_player_id,
         get_faction_id(&player.faction_type),
-        0,
-        1000,
     )
     .execute(&pool)
     .await;
@@ -472,25 +442,30 @@ async fn bulk_insert_into_matches_players_commander(
 }
 
 async fn update_commander_elo(
-    new_elos: &[i32],
+    new_ratings: &[Vec<WengLinRating>],
     to_insert_thing: &[(i32, i32, &Player)],
-    win_list: &[bool],
+    win_list: &[usize],
     pool: Pool<Postgres>,
 ) {
     let id_future = sqlx::query(
         r#"
         UPDATE rankings_commander
-        SET "ELO" = u.new_elo, wins=wins+u.is_win
+        SET rating = u.new_rating,
+            wins = wins + u.is_win,
+            uncertainty = u.new_uncertainty
         FROM (
-            SELECT UNNEST($1::integer[]) AS new_elo,
-            UNNEST($2::integer[]) AS pid,
-            UNNEST($3::integer[]) AS fid,
-            UNNEST($4::integer[]) AS is_win
-            ) AS u
+            SELECT
+                UNNEST($1::float[]) AS new_rating,
+                UNNEST($2::float[]) AS new_uncertainty,
+                UNNEST($3::integer[]) AS pid,
+                UNNEST($4::integer[]) AS fid,
+                UNNEST($5::integer[]) AS is_win
+        ) AS u
         WHERE player_id = u.pid AND faction_id = u.fid
         "#,
     )
-    .bind(new_elos)
+    .bind(new_ratings.iter().map(|a| a[0].rating).collect::<Vec<f64>>())
+    .bind(new_ratings.iter().map(|a| a[0].uncertainty).collect::<Vec<f64>>())
     .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
     .bind(
         to_insert_thing
@@ -501,7 +476,7 @@ async fn update_commander_elo(
     .bind(
         win_list
             .iter()
-            .map(|&x| if x { 1 } else { 0 })
+            .map(|&x| if x == 1 { 1 } else { 0 })
             .collect::<Vec<i32>>(),
     )
     .execute(&pool)
@@ -542,10 +517,10 @@ async fn bulk_search_player_ids(players: Vec<&Player>, pool: Pool<Postgres>) -> 
 async fn bulk_search_commander_ids(
     players: &[(i32, i32, &Player)],
     pool: Pool<Postgres>,
-) -> Vec<i32> {
+) -> Vec<(f64, f64)> {
     let all_search_ids = sqlx::query!(
         r#"
-        SELECT COALESCE(r."ELO", -1) as elo
+        SELECT COALESCE(r.rating, -1) as rating, COALESCE(r.uncertainty, -1) as uncertainty
         FROM (
             SELECT
                 id,
@@ -569,7 +544,14 @@ async fn bulk_search_commander_ids(
     match all_search_ids {
         Ok(all_searched) => all_searched
             .iter()
-            .map(|x| x.elo.unwrap_or_else(|| panic!("Could not unwrap id")))
+            .map(|x| {
+                (
+                    x.rating
+                        .unwrap_or_else(|| panic!("Could not unwrap rating")),
+                    x.uncertainty
+                        .unwrap_or_else(|| panic!("Could not unwrap uncertainty")),
+                )
+            })
             .collect::<Vec<_>>(),
         Err(e) => panic!("could not update due to {e}"),
     }
