@@ -33,7 +33,7 @@ async fn main() {
     let separator =
         "-------------------------------------------------------------------------------";
 
-    let _logger = Logger::try_with_str("debug")
+    let _logger = Logger::try_with_str("info")
         .unwrap()
         .use_utc()
         .log_to_file(
