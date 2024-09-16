@@ -213,8 +213,8 @@ async fn bulk_insert_into_matches_players_fps(
 ) {
     let id_future = sqlx::query(
         r#"
-        INSERT INTO matches_players_fps ( player_id, match_id, faction_id, tier_one_kills, tier_two_kills, tier_three_kills, tier_one_structures_destroyed, tier_two_structures_destroyed, tier_three_structures_destroyed, total_points, deaths )
-        SELECT * FROM UNNEST( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 )
+        INSERT INTO matches_players_fps ( player_id, match_id, faction_id, tier_one_kills, tier_two_kills, tier_three_kills, tier_one_structures_destroyed, tier_two_structures_destroyed, tier_three_structures_destroyed, total_points, deaths, duration_played )
+        SELECT * FROM UNNEST( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         "#)
         .bind(to_insert_thing.iter().map(|a| a.0).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| a.1).collect::<Vec<i32>>())
@@ -227,6 +227,7 @@ async fn bulk_insert_into_matches_players_fps(
         .bind(to_insert_thing.iter().map(|a| a.2.structure_kill[TIER_THREE]).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| a.2.points).collect::<Vec<i32>>())
         .bind(to_insert_thing.iter().map(|a| a.2.death).collect::<Vec<i32>>())
+        .bind(to_insert_thing.iter().map(|a| a.2.duration_played.num_seconds() as i32).collect::<Vec<i32>>())
     .execute(&pool)
     .await;
 

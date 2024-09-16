@@ -51,6 +51,7 @@ model matches_players_fps {
   tier_three_structures_destroyed Int
   total_points                    Int
   deaths                          Int
+  duration_played                 Int @default(0)
 
   @@id([match_id, player_id, faction_id])
 }
