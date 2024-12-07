@@ -415,6 +415,8 @@ async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
         (Maps::RiftBasin, 3),
         (Maps::Badlands, 4),
         (Maps::GreatErg, 5),
+        (Maps::TheMaw, 6),
+        (Maps::CrimsonPeak, 7),
     ]);
     let modes_id = HashMap::from([
         (Modes::SolVsAlien, 0),
