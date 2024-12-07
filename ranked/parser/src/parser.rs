@@ -167,6 +167,8 @@ pub enum Maps {
     RiftBasin,
     Badlands,
     GreatErg,
+    TheMaw,
+    CrimsonPeak
 }
 
 const TIER_ONE_UNITS: &[&str] = &[
@@ -906,7 +908,15 @@ impl Game {
                             self.map = Maps::Badlands;
                         } else if map_str == "GreatErg" {
                             self.map = Maps::GreatErg;
+                        } else if map_str == "TheMaw" {
+                            self.map = Maps::TheMaw;
+                        } else if map_str == "CrimsonPeak" {
+                            self.map = Maps::CrimsonPeak;
+                        } else {
+                            error!("Map {map_str} not found. Exiting parsing.");
+                            panic!();
                         }
+
                         info!("Files read for finding the current map are {files_read:?}");
                         return;
                     }
@@ -1135,5 +1145,12 @@ r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed
         assert_eq!(abnormal_player.unit_kill[1], 1);
         assert_eq!(abnormal_player.unit_kill[2], -1);
         assert_eq!(abnormal_player.points, -30);
+    }
+
+
+    #[test]
+    fn human_vs_human_new_file() {
+        let game = checking_file(Path::new("./test_stuff/L20241203.log"));
+        assert_eq!(game.map, Maps::TheMaw);
     }
 }
