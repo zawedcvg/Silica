@@ -240,10 +240,10 @@ const TIER_TWO_STRUCTURES: &[&str] = &[
     "Refinery",
     "Bunker",
     "ConstructionSite_TurretHeavy",
-    "TurretHeavy",
-    "TurretMedium",
+    "HeavyTurret",
+    "Turret",
     "GrandSpawningCyst",
-    "TurretAARocket",
+    "AntiAirRocketTurret",
 ];
 
 const TIER_THREE_STRUCTURES: &[&str] = &[
