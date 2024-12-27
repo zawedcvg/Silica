@@ -409,6 +409,7 @@ fn get_faction_id(faction: &Factions) -> i32 {
 
 async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
     debug!("Something started for insert into match");
+    //TODO make it so trhat this part is automatically generated
     let maps_id = HashMap::from([
         (Maps::NarakaCity, 1),
         (Maps::MonumentValley, 2),
@@ -417,6 +418,7 @@ async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
         (Maps::GreatErg, 5),
         (Maps::TheMaw, 6),
         (Maps::CrimsonPeak, 7),
+        (Maps::NorthPolarCap, 7),
     ]);
     let modes_id = HashMap::from([
         (Modes::SolVsAlien, 0),

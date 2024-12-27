@@ -168,7 +168,8 @@ pub enum Maps {
     Badlands,
     GreatErg,
     TheMaw,
-    CrimsonPeak
+    CrimsonPeak,
+    NorthPolarCap
 }
 
 const TIER_ONE_UNITS: &[&str] = &[
@@ -912,6 +913,8 @@ impl Game {
                             self.map = Maps::TheMaw;
                         } else if map_str == "CrimsonPeak" {
                             self.map = Maps::CrimsonPeak;
+                        } else if map_str == "NorthPolarCap" {
+                            self.map = Maps::NorthPolarCap;
                         } else {
                             error!("Map {map_str} not found. Exiting parsing.");
                             panic!();
@@ -1047,6 +1050,7 @@ mod tests {
     #[test]
     fn human_vs_human_single_file() {
         let game = checking_file(Path::new("./test_stuff/some.log"));
+        println!("{:#?}", game.players);
         assert_eq!(game.match_type, Modes::CentauriVsSol);
         assert_eq!(game.winning_team, Factions::Centauri);
         assert_eq!(game.get_player_vec().len(), 20);
