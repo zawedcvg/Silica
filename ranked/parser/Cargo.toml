@@ -15,6 +15,11 @@ flexi_logger = { version = "0.28.5", features = ["compress"] }
 log = "0.4.22"
 skillratings = "0.27.0"
 
+[lib]
+name = "parser"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
 [profile.release]
 #debug = true
 #debug = 2

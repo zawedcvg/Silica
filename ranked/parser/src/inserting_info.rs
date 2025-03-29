@@ -1,4 +1,4 @@
-use crate::parser::{Factions, Game, Maps, Modes, Player, TIER_ONE, TIER_THREE, TIER_TWO};
+use parser::{Factions, Game, Maps, Modes, Player, TIER_ONE, TIER_THREE, TIER_TWO};
 use futures::future::join_all;
 use skillratings::{
     weng_lin::{weng_lin_multi_team, WengLinConfig, WengLinRating},
