@@ -2,6 +2,8 @@
 name = "parser"
 version = "0.1.0"
 edition = "2021"
+description = "test push"
+license = "MIT"
 
 [dependencies]
 chrono = "0.4.38"
