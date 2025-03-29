@@ -4,8 +4,8 @@ use log::{debug, error, info};
 use sqlx::postgres::PgPoolOptions;
 use std::path::Path;
 use std::sync::Arc;
-pub mod inserting_info;
-use crate::inserting_info::inserting_info;
+// pub mod inserting_info;
+// use crate::inserting_info::inserting_info;
 use parser::checking_folder;
 use std::env;
 
