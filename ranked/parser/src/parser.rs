@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::usize;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum Factions {
@@ -23,6 +22,7 @@ pub enum Factions {
 pub enum Modes {
     #[default]
     SolVsAlien,
+    CentauriVsAlien,
     CentauriVsSol,
     CentauriVsSolVsAlien,
 }
@@ -124,6 +124,7 @@ pub struct Game {
 
 const SOL_VS_ALIEN: &str = "HUMANS_VS_ALIENS";
 const CENTAURI_VS_SOL: &str = "HUMANS_VS_HUMANS";
+const CENTAURI_VS_ALIEN: &str = "HUMANS2_VS_ALIENS";
 const CENTAURI_VS_SOL_VS_ALIEN: &str = "HUMANS_VS_HUMANS_VS_ALIENS";
 
 //Chat message consts
@@ -169,56 +170,84 @@ pub enum Maps {
     GreatErg,
     TheMaw,
     CrimsonPeak,
-    NorthPolarCap
+    NorthPolarCap,
+    WhisperingPlains,
+    BlackIsle,
+    CrystalChasm,
 }
 
 const TIER_ONE_UNITS: &[&str] = &[
     "Crab",
     "Crab_Horned",
     "Shocker",
+    "Sol_HoverBike",
     "Shrimp",
-    "Soldier_Rifleman",
-    "Soldier_Scout",
-    "Soldier_Heavy",
-    "Soldier_Marksman",
-    "LightQuad",
     "Wasp",
-    "HoverBike",
     "Worm",
-    "FlakTruck",
     "Squid",
+    "Cent_Soldier_Militia",
+    "Cent_Soldier_Trooper",
+    "Cent_Soldier_Marksman",
+    "Cent_Soldier_Juggernaut",
+    "Sol_Soldier_Sniper",
+    "Sol_Soldier_Rifleman",
+    "Sol_Soldier_Heavy",
+    "Sol_Soldier_Scout",
+    "Cent_Soldier_Templar",
+    "Sol_Soldier_Commando",
 ];
+
 const TIER_TWO_UNITS: &[&str] = &[
     "Behemoth",
     "Hunter",
-    "LightArmoredCar",
-    "ArmedTransport",
-    "HeavyArmoredCar",
-    "TroopTransport",
-    "HeavyQuad",
-    "RocketLauncher",
-    "PulseTank",
-    "AirGunship",
-    "AirFighter",
-    "AirDropship",
     "Dragonfly",
     "Firebug",
-    "Soldier_Commando",
     "GreatWorm",
+    "Sol_Light_LightQuad",
+    "Sol_Light_HeavyQuad",
+    "Sol_Light_LightStriker",
+    "Sol_Light_HeavyStriker",
+    "Sol_Light_AATruck",
+    "Sol_Light_PlatoonHauler",
+    "Cent_Light_LightRaider",
+    "Cent_Light_HeavyRaider",
+    "Cent_Light_SquadTransport",
+    "Cent_Light_StrikeTank",
+    "Cent_Light_AssaultCar",
+    "Cent_Light_FlakCar",
 ];
 
 const TIER_THREE_UNITS: &[&str] = &[
     "Queen",
     "Scorpion",
     "Goliath",
-    "BomberCraft",
-    "HeavyHarvester",
-    "HoverTank",
-    "RailgunTank",
-    "SiegeTank",
-    "AirBomber",
     "Defiler",
     "Colossus",
+    "Sol_Heavy_BarrageTruck",
+    "Sol_Heavy_HoverTank",
+    "Sol_Heavy_PulseTrack",
+    "Sol_Heavy_RailgunTank",
+    "Sol_Heavy_BarrageTruck",
+    "Sol_Heavy_HoverTank",
+    "Sol_Heavy_PulseTrack",
+    "Sol_Heavy_RailgunTank",
+    "Sol_Air_Bomber",
+    "Sol_Air_DropShip",
+    "Sol_Air_Gunship",
+    "Sol_Air_Fighter",
+    "Sol_UltraHeavy_SiegeTank",
+    "Cent_Heavy_CombatTank",
+    "Cent_Heavy_HeavyTank",
+    "Cent_Heavy_PyroTank",
+    "Cent_Heavy_RocketTruck",
+    "Cent_Heavy_CombatTank",
+    "Cent_Air_Dreadnought",
+    "Cent_Air_Freighter",
+    "Cent_Air_Interceptor",
+    "Cent_Air_Shuttle",
+    "Cent_UltraHeavy_CrimsonTank",
+    "Cent_Heavy_Harvester",
+    "Sol_HoverHarvester",
 ];
 
 const TIER_ONE_STRUCTURES: &[&str] = &[
@@ -232,19 +261,19 @@ const TIER_ONE_STRUCTURES: &[&str] = &[
 ];
 
 const TIER_TWO_STRUCTURES: &[&str] = &[
-    "BioCache",
-    "Barracks",
-    "HeavyVehicleFactory",
-    "LightVehicleFactory",
-    "QuantumCortex",
-    "GreaterSpawningCyst",
     "Refinery",
     "Bunker",
-    "ConstructionSite_TurretHeavy",
     "HeavyTurret",
     "Turret",
     "GrandSpawningCyst",
     "AntiAirRocketTurret",
+    "Barracks",
+    "HeavyFactory",
+    "LightFactory",
+    "BioCache",
+    "QuantumCortex",
+    "GreaterSpawningCyst",
+    "GrandSpawningCyst",
 ];
 
 const TIER_THREE_STRUCTURES: &[&str] = &[
@@ -273,7 +302,12 @@ impl Player {
                 self.structure_kill[TIER_THREE] += 1;
                 self.points += TIER_THREE_STRUCTURE_POINTS;
             }
-            _ => (),
+            _ => {
+                warn!(
+                    "Unknown structure kill in update_structure_kill: {}",
+                    structure
+                );
+            }
         }
     }
 
@@ -301,7 +335,9 @@ impl Player {
                     self.points += TIER_THREE_UNIT_POINTS * is_enemy;
                 }
             }
-            _ => (),
+            _ => {
+                warn!("Unknown unit in update_unit_kill: {}", unit);
+            }
         }
     }
 
@@ -348,7 +384,9 @@ impl Player {
                     self.points -= TIER_THREE_UNIT_POINTS;
                 }
             }
-            _ => (),
+            _ => {
+                warn!("Unknown unit in update_death: {}", unit);
+            }
         }
     }
 
@@ -437,6 +475,7 @@ impl Game {
             Modes::CentauriVsSolVsAlien => {
                 [Factions::Sol, Factions::Alien, Factions::Centauri].to_vec()
             }
+            Modes::CentauriVsAlien => [Factions::Centauri, Factions::Alien].to_vec(),
         }
     }
 
@@ -737,6 +776,8 @@ impl Game {
 
         if match_type == SOL_VS_ALIEN {
             self.match_type = Modes::SolVsAlien
+        } else if match_type == CENTAURI_VS_ALIEN {
+            self.match_type = Modes::CentauriVsAlien
         } else if match_type == CENTAURI_VS_SOL {
             self.match_type = Modes::CentauriVsSol
         } else if match_type == CENTAURI_VS_SOL_VS_ALIEN {
@@ -746,7 +787,7 @@ impl Game {
 
     fn process_kills(&mut self) {
         let kill_regex = match Regex::new(
-            r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
+            r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*?)"\)"#,
         ) {
             Ok(kill_regex) => kill_regex,
             Err(e) => panic!("Error in creating the kill regex: {e}"),
@@ -813,7 +854,7 @@ impl Game {
 
     fn process_structure_kills(&mut self) {
         let kill_regex = match Regex::new(
-            r#""(.*?)<(.*?)><(.*?)><(.*?)>" triggered "structure_kill" \(structure "(.*)"\) \(struct_team "(.*)"\)"#,
+            r#""(.*?)<(.*?)><(.*?)><(.*?)>" triggered "structure_kill" \(structure "(.*?)"\) \(weapon "(.*)"\) \(struct_team "(.*)"\)"#,
         ) {
             Ok(kill_regex) => kill_regex,
             Err(e) => panic!("Error in creating the kill regex: {e}"),
@@ -824,7 +865,7 @@ impl Game {
                 continue;
             }
             let kill_matches = kill_regex.captures(kill_line);
-            let Some((_, [player_name, _, player_id, player_faction, enemy_structure, _])) =
+            let Some((_, [player_name, _, player_id, player_faction, enemy_structure, _, _])) =
                 kill_matches.map(|cap| cap.extract())
             else {
                 continue;
@@ -854,8 +895,8 @@ impl Game {
                         });
                     player.update_structure_kill(enemy_structure);
                 }
-                Err(_) => {
-                    info!("Couldn't parse the player_id. Most likely AI");
+                Err(e) => {
+                    info!("Couldn't parse the player_id. Most likely AI. Error message is {e}");
                 }
             };
         }
@@ -915,6 +956,12 @@ impl Game {
                             self.map = Maps::CrimsonPeak;
                         } else if map_str == "NorthPolarCap" {
                             self.map = Maps::NorthPolarCap;
+                        } else if map_str == "BlackIsle" {
+                            self.map = Maps::BlackIsle;
+                        } else if map_str == "CrystalChasm" {
+                            self.map = Maps::CrystalChasm;
+                        } else if map_str == "WhisperingPlains" {
+                            self.map = Maps::WhisperingPlains;
                         } else {
                             error!("Map {map_str} not found. Exiting parsing.");
                             panic!();
@@ -1150,7 +1197,6 @@ r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed
         assert_eq!(abnormal_player.unit_kill[2], -1);
         assert_eq!(abnormal_player.points, -30);
     }
-
 
     #[test]
     fn human_vs_human_new_file() {
