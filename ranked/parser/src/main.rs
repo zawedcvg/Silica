@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 pub mod parser;
 use crate::inserting_info::inserting_info;
-use crate::parser::checking_folder;
+use crate::parser::{checking_folder, parse_all_matches};
 use std::env;
 
 #[tokio::main]
@@ -78,9 +78,30 @@ async fn main() {
 
     //TODO getting the current map method takes a lot of time due to next line of rev lines/or is
 
-    info!("parsing the folder");
+    // info!("parsing the folder");
 
     let game = checking_folder(log_folder);
+
+    //
+    // For debugging
+    // let game = parse_all_matches(vec![Path::new(
+    //     "/home/neeladri/Silica/ranked/parser/log_folder/L20251215.log",
+    // )
+    // .to_path_buf()]);
+    // // parse_info(vec![path.to_path_buf()])
+    //
+    // info!("Found {} matches", game.len());
+    // for (i, g) in game.iter().enumerate() {
+    //     info!(
+    //         "Match {}: {:?} on {:?}, winner: {:?}, duration: {}s, players: {}",
+    //         i + 1,
+    //         g.match_type,
+    //         g.map,
+    //         g.winning_team,
+    //         g.get_match_length(),
+    //         g.get_player_vec().len()
+    //     );
+    // }
 
     debug!("Match length is {:#?} seconds", game.get_match_length());
 
