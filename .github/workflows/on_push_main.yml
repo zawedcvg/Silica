@@ -33,7 +33,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Binary
+          name: Binary-Windows
           path: |
             ${{ steps.compile.outputs.BUILT_ARCHIVE }}
             ${{ steps.compile.outputs.BUILT_CHECKSUM }}
@@ -47,7 +47,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Binary
+          name: Binary-Linux
           path: |
             ${{ steps.compile2.outputs.BUILT_ARCHIVE }}
             ${{ steps.compile2.outputs.BUILT_CHECKSUM }}
