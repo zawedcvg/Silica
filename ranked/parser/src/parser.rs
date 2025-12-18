@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::usize;
 
 #[derive(PartialEq, Default, Hash, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum Factions {
@@ -23,6 +22,7 @@ pub enum Factions {
 pub enum Modes {
     #[default]
     SolVsAlien,
+    CentauriVsAlien,
     CentauriVsSol,
     CentauriVsSolVsAlien,
 }
@@ -124,6 +124,7 @@ pub struct Game {
 
 const SOL_VS_ALIEN: &str = "HUMANS_VS_ALIENS";
 const CENTAURI_VS_SOL: &str = "HUMANS_VS_HUMANS";
+const CENTAURI_VS_ALIEN: &str = "HUMANS2_VS_ALIENS";
 const CENTAURI_VS_SOL_VS_ALIEN: &str = "HUMANS_VS_HUMANS_VS_ALIENS";
 
 //Chat message consts
@@ -169,56 +170,84 @@ pub enum Maps {
     GreatErg,
     TheMaw,
     CrimsonPeak,
-    NorthPolarCap
+    NorthPolarCap,
+    WhisperingPlains,
+    BlackIsle,
+    CrystalChasm,
 }
 
 const TIER_ONE_UNITS: &[&str] = &[
     "Crab",
     "Crab_Horned",
     "Shocker",
+    "Sol_HoverBike",
     "Shrimp",
-    "Soldier_Rifleman",
-    "Soldier_Scout",
-    "Soldier_Heavy",
-    "Soldier_Marksman",
-    "LightQuad",
     "Wasp",
-    "HoverBike",
     "Worm",
-    "FlakTruck",
     "Squid",
+    "Cent_Soldier_Militia",
+    "Cent_Soldier_Trooper",
+    "Cent_Soldier_Marksman",
+    "Cent_Soldier_Juggernaut",
+    "Sol_Soldier_Sniper",
+    "Sol_Soldier_Rifleman",
+    "Sol_Soldier_Heavy",
+    "Sol_Soldier_Scout",
+    "Cent_Soldier_Templar",
+    "Sol_Soldier_Commando",
 ];
+
 const TIER_TWO_UNITS: &[&str] = &[
     "Behemoth",
     "Hunter",
-    "LightArmoredCar",
-    "ArmedTransport",
-    "HeavyArmoredCar",
-    "TroopTransport",
-    "HeavyQuad",
-    "RocketLauncher",
-    "PulseTank",
-    "AirGunship",
-    "AirFighter",
-    "AirDropship",
     "Dragonfly",
     "Firebug",
-    "Soldier_Commando",
     "GreatWorm",
+    "Sol_Light_LightQuad",
+    "Sol_Light_HeavyQuad",
+    "Sol_Light_LightStriker",
+    "Sol_Light_HeavyStriker",
+    "Sol_Light_AATruck",
+    "Sol_Light_PlatoonHauler",
+    "Cent_Light_LightRaider",
+    "Cent_Light_HeavyRaider",
+    "Cent_Light_SquadTransport",
+    "Cent_Light_StrikeTank",
+    "Cent_Light_AssaultCar",
+    "Cent_Light_FlakCar",
 ];
 
 const TIER_THREE_UNITS: &[&str] = &[
     "Queen",
     "Scorpion",
     "Goliath",
-    "BomberCraft",
-    "HeavyHarvester",
-    "HoverTank",
-    "RailgunTank",
-    "SiegeTank",
-    "AirBomber",
     "Defiler",
     "Colossus",
+    "Sol_Heavy_BarrageTruck",
+    "Sol_Heavy_HoverTank",
+    "Sol_Heavy_PulseTruck",
+    "Sol_Heavy_RailgunTank",
+    "Sol_Heavy_BarrageTruck",
+    "Sol_Heavy_HoverTank",
+    "Sol_Heavy_PulseTrack",
+    "Sol_Heavy_RailgunTank",
+    "Sol_Air_Bomber",
+    "Sol_Air_Dropship",
+    "Sol_Air_Gunship",
+    "Sol_Air_Fighter",
+    "Sol_UltraHeavy_SiegeTank",
+    "Cent_Heavy_CombatTank",
+    "Cent_Heavy_HeavyTank",
+    "Cent_Heavy_PyroTank",
+    "Cent_Heavy_RocketTank",
+    "Cent_Heavy_CombatTank",
+    "Cent_Air_Dreadnought",
+    "Cent_Air_Freighter",
+    "Cent_Air_Interceptor",
+    "Cent_Air_Shuttle",
+    "Cent_UltraHeavy_CrimsonTank",
+    "Cent_HeavyHarvester",
+    "Sol_HoverHarvester",
 ];
 
 const TIER_ONE_STRUCTURES: &[&str] = &[
@@ -232,19 +261,19 @@ const TIER_ONE_STRUCTURES: &[&str] = &[
 ];
 
 const TIER_TWO_STRUCTURES: &[&str] = &[
-    "BioCache",
-    "Barracks",
-    "HeavyVehicleFactory",
-    "LightVehicleFactory",
-    "QuantumCortex",
-    "GreaterSpawningCyst",
     "Refinery",
     "Bunker",
-    "ConstructionSite_TurretHeavy",
     "HeavyTurret",
     "Turret",
     "GrandSpawningCyst",
     "AntiAirRocketTurret",
+    "Barracks",
+    "HeavyFactory",
+    "LightFactory",
+    "BioCache",
+    "QuantumCortex",
+    "GreaterSpawningCyst",
+    "GrandSpawningCyst",
 ];
 
 const TIER_THREE_STRUCTURES: &[&str] = &[
@@ -273,7 +302,12 @@ impl Player {
                 self.structure_kill[TIER_THREE] += 1;
                 self.points += TIER_THREE_STRUCTURE_POINTS;
             }
-            _ => (),
+            _ => {
+                warn!(
+                    "Unknown structure kill in update_structure_kill: {}",
+                    structure
+                );
+            }
         }
     }
 
@@ -301,7 +335,9 @@ impl Player {
                     self.points += TIER_THREE_UNIT_POINTS * is_enemy;
                 }
             }
-            _ => (),
+            _ => {
+                warn!("Unknown unit in update_unit_kill: {}", unit);
+            }
         }
     }
 
@@ -348,7 +384,9 @@ impl Player {
                     self.points -= TIER_THREE_UNIT_POINTS;
                 }
             }
-            _ => (),
+            _ => {
+                warn!("Unknown unit in update_death: {}", unit);
+            }
         }
     }
 
@@ -437,6 +475,7 @@ impl Game {
             Modes::CentauriVsSolVsAlien => {
                 [Factions::Sol, Factions::Alien, Factions::Centauri].to_vec()
             }
+            Modes::CentauriVsAlien => [Factions::Centauri, Factions::Alien].to_vec(),
         }
     }
 
@@ -737,6 +776,8 @@ impl Game {
 
         if match_type == SOL_VS_ALIEN {
             self.match_type = Modes::SolVsAlien
+        } else if match_type == CENTAURI_VS_ALIEN {
+            self.match_type = Modes::CentauriVsAlien
         } else if match_type == CENTAURI_VS_SOL {
             self.match_type = Modes::CentauriVsSol
         } else if match_type == CENTAURI_VS_SOL_VS_ALIEN {
@@ -746,7 +787,7 @@ impl Game {
 
     fn process_kills(&mut self) {
         let kill_regex = match Regex::new(
-            r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*)"\)"#,
+            r#""(.*?)<(.*?)><(.*?)><(.*?)>" killed "(.*?)<(.*?)><(.*?)><(.*?)>" with "(.*)" \(dmgtype "(.*)"\) \(victim "(.*?)"\)"#,
         ) {
             Ok(kill_regex) => kill_regex,
             Err(e) => panic!("Error in creating the kill regex: {e}"),
@@ -813,7 +854,7 @@ impl Game {
 
     fn process_structure_kills(&mut self) {
         let kill_regex = match Regex::new(
-            r#""(.*?)<(.*?)><(.*?)><(.*?)>" triggered "structure_kill" \(structure "(.*)"\) \(struct_team "(.*)"\)"#,
+            r#""(.*?)<(.*?)><(.*?)><(.*?)>" triggered "structure_kill" \(structure "(.*?)"\) \(weapon "(.*)"\) \(struct_team "(.*)"\) \(construction "(.*)"\) \(building_position "(.*)"\)""#,
         ) {
             Ok(kill_regex) => kill_regex,
             Err(e) => panic!("Error in creating the kill regex: {e}"),
@@ -824,7 +865,7 @@ impl Game {
                 continue;
             }
             let kill_matches = kill_regex.captures(kill_line);
-            let Some((_, [player_name, _, player_id, player_faction, enemy_structure, _])) =
+            let Some((_, [player_name, _, player_id, player_faction, enemy_structure, _, _, _, _])) =
                 kill_matches.map(|cap| cap.extract())
             else {
                 continue;
@@ -854,8 +895,8 @@ impl Game {
                         });
                     player.update_structure_kill(enemy_structure);
                 }
-                Err(_) => {
-                    info!("Couldn't parse the player_id. Most likely AI");
+                Err(e) => {
+                    info!("Couldn't parse the player_id. Most likely AI. Error message is {e}");
                 }
             };
         }
@@ -915,6 +956,12 @@ impl Game {
                             self.map = Maps::CrimsonPeak;
                         } else if map_str == "NorthPolarCap" {
                             self.map = Maps::NorthPolarCap;
+                        } else if map_str == "BlackIsle" {
+                            self.map = Maps::BlackIsle;
+                        } else if map_str == "CrystalChasm" {
+                            self.map = Maps::CrystalChasm;
+                        } else if map_str == "WhisperingPlains" {
+                            self.map = Maps::WhisperingPlains;
                         } else {
                             error!("Map {map_str} not found. Exiting parsing.");
                             panic!();
@@ -1011,6 +1058,98 @@ fn parse_info(all_lines: Vec<PathBuf>) -> Game {
     game
 }
 
+pub fn parse_all_matches(all_lines: Vec<PathBuf>) -> Vec<Game> {
+    let all_matches = get_all_matches(&all_lines);
+    let mut games = Vec::new();
+
+    for match_lines in all_matches {
+        let mut game = Game {
+            current_match: match_lines,
+            ..Default::default()
+        };
+        // game.current_match = match_lines;
+
+        // └╴  consider initializing the variable with `parser::Game { current_match: match_lines, ..Default::default() }` and removing relevant reassignments clippy (field_reassign_with_default) [1066, 9]
+        // bad way but eh
+
+        if let Some(first_line) = game.current_match.first() {
+            let byte_matched_datetime_range = get_byte_indices(first_line, DATETIME_RANGE);
+            game.start_time = NaiveDateTime::parse_from_str(
+                first_line[byte_matched_datetime_range].trim(),
+                "%m/%d/%Y - %H:%M:%S",
+            )
+            .unwrap_or_default();
+        }
+
+        if let Some(last_line) = game.current_match.last() {
+            let byte_matched_datetime_range = get_byte_indices(last_line, DATETIME_RANGE);
+            game.end_time = NaiveDateTime::parse_from_str(
+                last_line[byte_matched_datetime_range].trim(),
+                "%m/%d/%Y - %H:%M:%S",
+            )
+            .unwrap_or_default();
+        }
+        game.get_match_type();
+        game.get_winning_team();
+        game.process_all_players();
+        game.process_kills();
+        game.process_structure_kills();
+        game.get_commanders();
+        game.process_player_durations();
+
+        // Parse start and end times from the match
+
+        games.push(game);
+    }
+
+    games
+}
+
+fn get_all_matches(all_lines: &[PathBuf]) -> Vec<Vec<String>> {
+    let mut all_matches = Vec::new();
+    let mut current_match = Vec::new();
+    let mut in_match = false;
+
+    for file in all_lines.iter().rev() {
+        let reader = match File::open(file) {
+            Ok(open_file) => RevLines::new(open_file),
+            Err(e) => {
+                warn!("Error in opening the log file in get_all_matches due to: {e}");
+                continue;
+            }
+        };
+
+        for option_line in reader {
+            let line = match option_line {
+                Ok(line) => line,
+                Err(e) => {
+                    warn!("Cannot read line due to {e}");
+                    continue;
+                }
+            };
+
+            let byte_matched_round_end_range = get_byte_indices(&line, ROUND_END_RANGE);
+            let byte_matched_round_start_range = get_byte_indices(&line, ROUND_START_RANGE);
+
+            if line[byte_matched_round_end_range].trim() == ROUND_END {
+                in_match = true;
+                current_match.push(line);
+            } else if in_match {
+                current_match.push(line.clone());
+                if line[byte_matched_round_start_range].trim() == ROUND_START {
+                    current_match.reverse();
+                    all_matches.push(current_match.clone());
+                    current_match.clear();
+                    in_match = false;
+                }
+            }
+        }
+    }
+
+    all_matches.reverse(); // Reverse to get chronological order
+    all_matches
+}
+
 pub fn checking_folder(path: &Path) -> Game {
     info!("The path of the folder is {path:?}");
     let entries = match std::fs::read_dir(path) {
@@ -1069,14 +1208,14 @@ mod tests {
         let game = checking_folder(Path::new("./log_folder"));
         assert_eq!(game.match_type, Modes::SolVsAlien);
         assert_eq!(game.winning_team, Factions::Alien);
-        assert_eq!(game.map, Maps::MonumentValley);
+        assert_eq!(game.map, Maps::GreatErg);
         assert_eq!(
             game.start_time,
-            NaiveDateTime::parse_from_str("07/23/2024 - 13:31:37", "%m/%d/%Y - %H:%M:%S").unwrap()
+            NaiveDateTime::parse_from_str("12/16/2025 - 16:53:53", "%m/%d/%Y - %H:%M:%S").unwrap()
         );
         assert_eq!(
             game.end_time,
-            NaiveDateTime::parse_from_str("07/23/2024 - 14:19:26", "%m/%d/%Y - %H:%M:%S").unwrap()
+            NaiveDateTime::parse_from_str("12/16/2025 - 17:20:28", "%m/%d/%Y - %H:%M:%S").unwrap()
         );
     }
 
@@ -1133,9 +1272,9 @@ mod tests {
         let mut game = Game {
             current_match: vec![
                 r#"L 07/12/2024 - 00:03:57: "ßЉбббппѐѐ<21312><321321312><>" joined team "Alien""#.to_string(),
-r#"L 07/12/2024 - 00:09:33: "ßЉбббппѐѐ<21312><321321312><Alien>" triggered "structure_kill" (structure "Node") (struct_team "Alien")"#.to_string(),
-r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУТУХТУХХ<123212><3122211><Sol>" with "Goliath" (dmgtype "Collision") (victim "Soldier_Commando")"#.to_string(),
-r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУХТУХХ<13212><31122211><Alien>" with "Goliath" (dmgtype "Collision") (victim "Goliath")"#.to_string(),
+r#"L 07/12/2024 - 00:09:33: "ßЉбббппѐѐ<21312><321321312><Alien>" triggered "structure_kill" (structure "Node") (weapon "Sol_Light_LightQuad") (struct_team "Sol") (construction "yes") (building_position "-890 -725 23")""#.to_string(),
+r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУТУХТУХХ<123212><3122211><Sol>" with "Sol_Light_LightStriker" (dmgtype "") (victim "Cent_Light_HeavyRaider") (attacker_position "2037 -1801 153") (victim_position "2012 -1799 155")"#.to_string(),
+r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed "инининин ТУТУХТУХХ<123212><3122211><Sol>" with "Sol_Light_LightStriker" (dmgtype "") (victim "Cent_Light_HeavyRaider") (attacker_position "2037 -1801 153") (victim_position "2012 -1799 155")"#.to_string(),
             ],
             ..Default::default()
         };
@@ -1143,14 +1282,14 @@ r#"L 07/10/2024 - 00:00:57: "ßЉбббппѐѐ<21312><321321312><Alien>" killed
         game.process_structure_kills();
         game.process_kills();
         let abnormal_player = game.players.get(&(321321312_i64, Factions::Alien)).unwrap();
+        println!("{:#?}", abnormal_player);
         assert_eq!(abnormal_player.faction_type, Factions::Alien);
         assert_eq!(abnormal_player.player_name, "ßЉбббппѐѐ");
         assert_eq!(abnormal_player.structure_kill[0], 1);
-        assert_eq!(abnormal_player.unit_kill[1], 1);
-        assert_eq!(abnormal_player.unit_kill[2], -1);
-        assert_eq!(abnormal_player.points, -30);
+        assert_eq!(abnormal_player.unit_kill[1], 2);
+        assert_eq!(abnormal_player.unit_kill[2], 0);
+        assert_eq!(abnormal_player.points, 30);
     }
-
 
     #[test]
     fn human_vs_human_new_file() {

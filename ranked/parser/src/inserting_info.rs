@@ -418,12 +418,16 @@ async fn insert_into_match(game: &Game, pool: Pool<Postgres>) -> i32 {
         (Maps::GreatErg, 5),
         (Maps::TheMaw, 6),
         (Maps::CrimsonPeak, 7),
-        (Maps::NorthPolarCap, 7),
+        (Maps::NorthPolarCap, 8),
+        (Maps::BlackIsle, 9),
+        (Maps::WhisperingPlains, 10),
+        (Maps::CrystalChasm, 11),
     ]);
     let modes_id = HashMap::from([
         (Modes::SolVsAlien, 0),
         (Modes::CentauriVsSol, 1),
         (Modes::CentauriVsSolVsAlien, 2),
+        (Modes::CentauriVsAlien, 3),
     ]);
 
     let id_future = sqlx::query!(
